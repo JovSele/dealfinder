@@ -2,6 +2,8 @@
 # Nikdy nepush tento súbor s reálnymi tokenmi — použi .env alebo env premenné
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # ── TELEGRAM ─────────────────────────────────────────────────
 TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
@@ -11,16 +13,16 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "300"))  # 5 minút
 
 # Bazos.sk — vyhľadávací URL (uprav lokalitu / cenu podľa potreby)
-BAZOS_SEARCH_URL = (
+BAZOS_SEARCH_URL = os.getenv("BAZOS_SEARCH_URL", (
     "https://www.bazos.sk/search.php"
     "?hledat=byt"
     "&rubriky=reality"
     "&hlokalita=Bratislava"
     "&humkreis=25"
-    "&cenaod="
+    "&cenaod=50000"
     "&cenado="
     "&Submit=H%C4%BEada%C5%A5"
-)
+))
 
 # Requst headers — realistický prehliadač
 REQUEST_HEADERS = {
