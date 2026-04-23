@@ -2,8 +2,8 @@ name: DealFinder Scraper
 
 on:
   schedule:
-    - cron: '*/20 * * * *'  # každých 20 minút
-  workflow_dispatch:          # manuálne spustenie tlačidlom
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -18,10 +18,23 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run scraper (one cycle)
+      - name: Download DB artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: dealfinder-db
+          path: .
+        continue-on-error: true  # prvý beh nemá artifact
+
+      - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DB_PATH: dealfinder.db
-          SCRAPE_INTERVAL_SEC: 0
         run: python runner.py --once
+
+      - name: Upload DB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dealfinder-db
+          path: dealfinder.db
+          retention-days: 7
