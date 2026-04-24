@@ -1,3 +1,4 @@
+# runner.py
 import sys
 import time
 from datetime import datetime
@@ -45,6 +46,32 @@ def run_once() -> dict:
     return stats
 
 
+def send_pending_free_alerts() -> int:
+    """Pošli do Free kanála inzeráty ktoré čakali config.FREE_DELAY_HOURS hodín.
+    Vracia počet odoslaných alertov.
+    """
+    pending = db.get_pending_free_alerts(delay_hours=config.FREE_DELAY_HOURS)
+    if not pending:
+        return 0
+
+    log(f"Free kanál: {len(pending)} inzerátov čaká na odoslanie")
+
+    sent = 0
+    for listing in pending:
+        # Zoberiem score z DB ak existuje — pre free kanál postačí None
+        # (deal_score.score() potrebuje živý inzerát, tu máme dict z DB)
+        try:
+            sc = deal_score.score(listing)
+        except Exception:
+            sc = None
+
+        telegram.send_free_alert(listing, sc)
+        db.mark_free_sent(listing["id"], listing["source"])
+        sent += 1
+
+    return sent
+
+
 def bootstrap() -> None:
     log("Bootstrap: načítavam existujúce inzeráty...")
     for scraper in SCRAPERS:
@@ -70,7 +97,11 @@ def main() -> None:
         log("Režim: --once")
         bootstrap()
         stats = run_once()
-        log(f"Hotovo — Nové: {stats['new']} | Dealy: {stats['deals']} | Alerty: {stats['alerted']}")
+        free_sent = send_pending_free_alerts()
+        log(
+            f"Hotovo — Nové: {stats['new']} | Dealy: {stats['deals']} | "
+            f"Alerty: {stats['alerted']} | Free odoslané: {free_sent}"
+        )
         return
 
     # Normálny režim — nekonečná slučka
@@ -85,11 +116,13 @@ def main() -> None:
         cycle += 1
         log(f"--- Cyklus #{cycle} ---")
         stats = run_once()
+        free_sent = send_pending_free_alerts()
         log(
             f"Stiahnuté: {stats['scraped']} | "
             f"Nové: {stats['new']} | "
             f"Dealy: {stats['deals']} | "
-            f"Alerty: {stats['alerted']}"
+            f"Alerty: {stats['alerted']} | "
+            f"Free: {free_sent}"
         )
         log(f"DB celkom: {db.stats()['total_listings']} inzerátov")
         log(f"Ďalší cyklus o {config.SCRAPE_INTERVAL_SEC // 60} min...\n")

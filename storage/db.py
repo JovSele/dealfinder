@@ -3,6 +3,7 @@
 # Tabuľky:
 #   listings   — každý inzerát čo sme kedy videli
 #   seen_ids   — rýchla množina pre is_new() check
+#   free_sent  — inzeráty ktoré už boli poslané do Free kanála
 
 import sqlite3
 from contextlib import contextmanager
@@ -33,6 +34,13 @@ CREATE TABLE IF NOT EXISTS seen_ids (
     id          TEXT NOT NULL,
     source      TEXT NOT NULL,
     first_seen  TEXT NOT NULL,
+    PRIMARY KEY (id, source)
+);
+
+CREATE TABLE IF NOT EXISTS free_sent (
+    id          TEXT NOT NULL,
+    source      TEXT NOT NULL,
+    sent_at     TEXT NOT NULL,
     PRIMARY KEY (id, source)
 );
 
@@ -118,11 +126,54 @@ def mark_seen(listing_id: str, source: str) -> None:
 def bootstrap_seen(listings: list[dict]) -> None:
     """Pri prvom spustení označ všetky existujúce inzeráty ako videné
     bez posielania alertov — zabraňuje flood pri štarte.
+    Zároveň ich označ aj v free_sent, aby bootstrap inzeráty
+    nešli do Free kanála s oneskorením.
     """
+    now = datetime.now().isoformat()
     with _conn() as con:
         con.executemany(
             "INSERT OR IGNORE INTO seen_ids (id, source, first_seen) VALUES (?, ?, ?)",
-            [(l["id"], l["source"], datetime.now().isoformat()) for l in listings],
+            [(l["id"], l["source"], now) for l in listings],
+        )
+        # Bootstrap inzeráty nechceme posielať do free kanála —
+        # existovali pred spustením bota
+        con.executemany(
+            "INSERT OR IGNORE INTO free_sent (id, source, sent_at) VALUES (?, ?, ?)",
+            [(l["id"], l["source"], now) for l in listings],
+        )
+
+
+# ── Free kanál ────────────────────────────────────────────────
+
+def get_pending_free_alerts(delay_hours: int = 24) -> list[dict]:
+    """Vráti inzeráty ktoré:
+    - boli prvýkrát videné pred viac ako delay_hours hodinami
+    - ešte neboli poslané do Free kanála
+
+    Tieto pôjdu do DEALFINDER FREE Telegram kanála s ⏰ badge.
+    """
+    with _conn() as con:
+        rows = con.execute(
+            """
+            SELECT l.*, s.first_seen
+            FROM listings l
+            JOIN seen_ids s ON l.id = s.id AND l.source = s.source
+            LEFT JOIN free_sent f ON l.id = f.id AND l.source = f.source
+            WHERE f.id IS NULL
+              AND datetime(s.first_seen) <= datetime('now', ? || ' hours')
+            ORDER BY s.first_seen ASC
+            """,
+            (f"-{delay_hours}",),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_free_sent(listing_id: str, source: str) -> None:
+    """Označ inzerát ako odoslaný do Free kanála."""
+    with _conn() as con:
+        con.execute(
+            "INSERT OR IGNORE INTO free_sent (id, source, sent_at) VALUES (?, ?, ?)",
+            (listing_id, source, datetime.now().isoformat()),
         )
 
 
@@ -131,13 +182,15 @@ def bootstrap_seen(listings: list[dict]) -> None:
 def stats() -> dict:
     """Základné štatistiky — užitočné pri debugovaní."""
     with _conn() as con:
-        total = con.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-        seen  = con.execute("SELECT COUNT(*) FROM seen_ids").fetchone()[0]
-        sources = con.execute(
+        total    = con.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+        seen     = con.execute("SELECT COUNT(*) FROM seen_ids").fetchone()[0]
+        free_out = con.execute("SELECT COUNT(*) FROM free_sent").fetchone()[0]
+        sources  = con.execute(
             "SELECT source, COUNT(*) as n FROM listings GROUP BY source"
         ).fetchall()
     return {
         "total_listings": total,
         "total_seen":     seen,
+        "free_sent":      free_out,
         "by_source":      {r["source"]: r["n"] for r in sources},
     }

@@ -6,8 +6,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── TELEGRAM ─────────────────────────────────────────────────
-TELEGRAM_TOKEN   = os.getenv("TELEGRAM_TOKEN", "")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOKEN        = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID      = os.getenv("TELEGRAM_CHAT_ID", "")       # platený / okamžitý kanál
+TELEGRAM_FREE_CHAT_ID = os.getenv("TELEGRAM_FREE_CHAT_ID", "")  # DEALFINDER FREE kanál
 
 # ── SCRAPING ─────────────────────────────────────────────────
 SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "300"))  # 5 minút
@@ -46,15 +47,15 @@ REQUEST_RETRY_DELAY_SEC = 5
 DB_PATH = os.getenv("DB_PATH", "dealfinder.db")
 
 # ── DEAL SCORE ────────────────────────────────────────────────
-# Minimálny % rozdiel od priemeru aby sme poslali alert
 DEAL_SCORE_THRESHOLD_PCT = float(os.getenv("DEAL_SCORE_THRESHOLD_PCT", "10.0"))
-
-# Minimálny počet inzerátov v lokalite na výpočet priemeru
-DEAL_SCORE_MIN_SAMPLES = int(os.getenv("DEAL_SCORE_MIN_SAMPLES", "5"))
+DEAL_SCORE_MIN_SAMPLES   = int(os.getenv("DEAL_SCORE_MIN_SAMPLES", "5"))
 
 # ── FILTERS ───────────────────────────────────────────────────
-# Inzeráty s cenou 0 alebo pod týmto limitom ignorujeme
 FILTER_MIN_PRICE_EUR = int(os.getenv("FILTER_MIN_PRICE_EUR", "10000"))
 
+# ── FREE KANÁL ────────────────────────────────────────────────
+# Oneskorenie v hodinách — Free kanál dostane alerty s týmto oneskorením
+FREE_DELAY_HOURS = int(os.getenv("FREE_DELAY_HOURS", "24"))
+
 # ── LOGGING ───────────────────────────────────────────────────
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")  # INFO | DEBUG
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

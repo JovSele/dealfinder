@@ -2,6 +2,9 @@
 #
 # Rozhranie: send_alert(listing, score) → None
 # Všetky output moduly musia implementovať toto rozhranie.
+#
+# Free kanál: send_free_alert(listing, score) → None
+# Posiela s ⏰ badge a informáciou o oneskorení.
 
 import requests
 
@@ -9,7 +12,7 @@ import config
 
 
 def send_alert(listing: dict, score: dict | None = None) -> None:
-    """Pošli Telegram správu o novom inzeráte.
+    """Pošli Telegram správu o novom inzeráte (platený / okamžitý kanál).
 
     Args:
         listing: inzerát dict (z BaseScraper)
@@ -20,31 +23,52 @@ def send_alert(listing: dict, score: dict | None = None) -> None:
         return
 
     text = _format_message(listing, score)
+    _send(config.TELEGRAM_CHAT_ID, text)
 
+
+def send_free_alert(listing: dict, score: dict | None = None) -> None:
+    """Pošli Telegram správu do Free kanála s oneskorením.
+
+    Rovnaký obsah ako send_alert(), ale:
+    - posiela na TELEGRAM_FREE_CHAT_ID
+    - pridáva ⏰ badge a info o oneskorení
+    """
+    if not config.TELEGRAM_TOKEN or not config.TELEGRAM_FREE_CHAT_ID:
+        _log("TELEGRAM_FREE_CHAT_ID nie je nastavený — preskakujem free alert")
+        return
+
+    text = _format_message(listing, score, free_delay=True)
+    _send(config.TELEGRAM_FREE_CHAT_ID, text)
+
+
+# ── Interné ───────────────────────────────────────────────────
+
+def _send(chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id":                  config.TELEGRAM_CHAT_ID,
+        "chat_id":                  chat_id,
         "text":                     text,
         "parse_mode":               "Markdown",
         "disable_web_page_preview": False,
     }
-
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code == 200:
-            _log(f"Alert odoslaný: {listing['title'][:50]}")
+            _log(f"Alert odoslaný (chat {chat_id}): {text[:50]}")
         else:
             _log(f"Telegram API chyba {r.status_code}: {r.text[:100]}")
     except requests.RequestException as e:
         _log(f"Sieťová chyba: {e}")
 
 
-# ── Formátovanie ──────────────────────────────────────────────
-
-def _format_message(listing: dict, score: dict | None) -> str:
+def _format_message(listing: dict, score: dict | None, free_delay: bool = False) -> str:
     lines = []
 
-    # Hlavička — deal score ak existuje
+    # Hlavička
+    if free_delay:
+        lines.append(f"⏰ *-{config.FREE_DELAY_HOURS}h delay* | DEALFINDER FREE")
+        lines.append("")
+
     if score and score["pct_below"] >= 10:
         lines.append(f"🔥 *DEAL: {score['label']}*")
     else:
@@ -79,6 +103,11 @@ def _format_message(listing: dict, score: dict | None) -> str:
 
     # Zdroj
     lines.append(f"🔗 [{listing['source']}]({listing['url']})")
+
+    # Free upgrade hint
+    if free_delay:
+        lines.append("")
+        lines.append("_Chceš alerty okamžite? → dealfinder.sk_")
 
     return "\n".join(lines)
 
