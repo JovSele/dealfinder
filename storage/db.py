@@ -21,6 +21,9 @@ CREATE TABLE IF NOT EXISTS listings (
     price       INTEGER DEFAULT 0,
     area_m2     INTEGER DEFAULT 0,
     locality    TEXT,
+    district    TEXT DEFAULT "",
+    rooms       INTEGER DEFAULT 0,
+    hash        TEXT DEFAULT "",
     url         TEXT,
     scraped_at  TEXT,
     PRIMARY KEY (id, source)
@@ -67,9 +70,9 @@ def save_listing(listing: dict) -> None:
         con.execute(
             """
             INSERT OR IGNORE INTO listings
-                (id, source, title, price, area_m2, locality, url, scraped_at)
+                (id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at)
             VALUES
-                (:id, :source, :title, :price, :area_m2, :locality, :url, :scraped_at)
+                (:id, :source, :title, :price, :area_m2, :locality, :district, :rooms, :hash, :url, :scraped_at)
             """,
             listing,
         )

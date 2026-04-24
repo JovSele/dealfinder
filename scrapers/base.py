@@ -7,6 +7,8 @@
 #   4. Zaregistruj v runner.py → SCRAPERS zoznam
 #   Žiadne iné súbory sa nemenia.
 
+import hashlib
+
 from abc import ABC, abstractmethod
 from datetime import datetime
 
@@ -45,17 +47,25 @@ class BaseScraper(ABC):
         price: int = 0,
         area_m2: int = 0,
         locality: str = "",
+        district: str = "",
+        rooms: int = 0,
     ) -> dict:
-        """Helper — vytvorí listing dict so správnymi kľúčmi a metadátami."""
+        # Hash pre dedup — kombinácia url + cena + plocha
+        hash_input = f"{url}:{price}:{area_m2}"
+        content_hash = hashlib.md5(hash_input.encode()).hexdigest()
+
         return {
-            "id":         id,
-            "title":      title.strip(),
-            "price":      price,
-            "area_m2":    area_m2,
-            "locality":   locality.strip(),
-            "url":        url,
-            "source":     self.source,
-            "scraped_at": datetime.now().isoformat(),
+            "id":           id,
+            "title":        title.strip(),
+            "price":        price,
+            "area_m2":      area_m2,
+            "locality":     locality.strip(),
+            "district":     district.strip(),
+            "rooms":        rooms,
+            "hash":         content_hash,
+            "url":          url,
+            "source":       self.source,
+            "scraped_at":   datetime.now().isoformat(),
         }
 
     def _log(self, msg: str, level: str = "INFO") -> None:
