@@ -12,17 +12,20 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 # ── SCRAPING ─────────────────────────────────────────────────
 SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "300"))  # 5 minút
 
-# Bazos.sk — vyhľadávací URL (uprav lokalitu / cenu podľa potreby)
-BAZOS_SEARCH_URL = os.getenv("BAZOS_SEARCH_URL", (
-    "https://www.bazos.sk/search.php"
-    "?hledat=byt"
-    "&rubriky=reality"
-    "&hlokalita=Bratislava"
-    "&humkreis=25"
-    "&cenaod=50000"
-    "&cenado="
-    "&Submit=H%C4%BEada%C5%A5"
-))
+# Bazos.sk — viacero miest, každé = jeden wide query (bez humkreis)
+BAZOS_SEARCH_URLS = [
+    # Bratislava
+    "https://www.bazos.sk/search.php?hledat=byt&rubriky=reality&hlokalita=Bratislava&humkreis=25&cenaod=50000&cenado=&Submit=H%C4%BEada%C5%A5",
+    # Košice
+    "https://www.bazos.sk/search.php?hledat=byt&rubriky=reality&hlokalita=Ko%C5%A1ice&humkreis=25&cenaod=30000&cenado=&Submit=H%C4%BEada%C5%A5",
+    # Žilina
+    "https://www.bazos.sk/search.php?hledat=byt&rubriky=reality&hlokalita=%C5%BDilina&humkreis=25&cenaod=30000&cenado=&Submit=H%C4%BEada%C5%A5",
+    # Nitra
+    "https://www.bazos.sk/search.php?hledat=byt&rubriky=reality&hlokalita=Nitra&humkreis=25&cenaod=30000&cenado=&Submit=H%C4%BEada%C5%A5",
+]
+
+# Spätná kompatibilita — runner môže použiť oba spôsoby
+BAZOS_SEARCH_URL = BAZOS_SEARCH_URLS[0]
 
 # Requst headers — realistický prehliadač
 REQUEST_HEADERS = {

@@ -9,7 +9,8 @@ from storage import db
 from outputs import telegram
 
 SCRAPERS = [
-    BazosScraper(),
+    BazosScraper(url)
+    for url in config.BAZOS_SEARCH_URLS
 ]
 
 OUTPUTS = [

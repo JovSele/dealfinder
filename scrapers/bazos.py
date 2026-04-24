@@ -13,8 +13,12 @@ from scrapers.base import BaseScraper
 class BazosScraper(BaseScraper):
     source = "bazos.sk"
 
-    def __init__(self, search_url: str = config.BAZOS_SEARCH_URL):
+    def __init__(self, search_url: str = config.BAZOS_SEARCH_URLS[0]):
         self.search_url = search_url
+        import urllib.parse
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(search_url).query)
+        city = params.get("hlokalita", ["?"])[0]
+        self.source = f"bazos.sk/{city}"
         self._session = requests.Session()
         self._session.headers.update(config.REQUEST_HEADERS)
 
