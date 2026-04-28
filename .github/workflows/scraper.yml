@@ -29,23 +29,23 @@ jobs:
       
       - name: Debug env
         env:
-          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ vars.TELEGRAM_ADMIN_CHAT_ID }}
         run: |
-          echo "ADMIN_CHAT_ID set: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID != '' }}"
+          echo "ADMIN_CHAT_ID set: ${{ vars.TELEGRAM_ADMIN_CHAT_ID != '' }}"
 
       - name: Debug secrets
         run: |
           echo "TOKEN set: ${{ secrets.TELEGRAM_TOKEN != '' }}"
-          echo "CHAT_ID set: ${{ secrets.TELEGRAM_CHAT_ID != '' }}"
-          echo "FREE_CHAT_ID set: ${{ secrets.TELEGRAM_FREE_CHAT_ID != '' }}"
-          echo "ADMIN_CHAT_ID set: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID != '' }}"
+          echo "CHAT_ID set: ${{ vars.TELEGRAM_CHAT_ID != '' }}"
+          echo "FREE_CHAT_ID set: ${{ vars.TELEGRAM_FREE_CHAT_ID != '' }}"
+          echo "ADMIN_CHAT_ID set: ${{ vars.TELEGRAM_ADMIN_CHAT_ID != '' }}"
 
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_FREE_CHAT_ID: ${{ secrets.TELEGRAM_FREE_CHAT_ID }}
-          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
+          TELEGRAM_FREE_CHAT_ID: ${{ vars.TELEGRAM_FREE_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ vars.TELEGRAM_ADMIN_CHAT_ID }}
           DB_PATH: dealfinder.db
         run: python runner.py --once
 
@@ -59,7 +59,7 @@ jobs:
       - name: Test Telegram direct
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
         run: |
           python3 -c "
           import requests, os
@@ -99,6 +99,6 @@ jobs:
       - name: Run weekly summary
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_FREE_CHAT_ID: ${{ secrets.TELEGRAM_FREE_CHAT_ID }}
-          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          TELEGRAM_FREE_CHAT_ID: ${{ vars.TELEGRAM_FREE_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ vars.TELEGRAM_ADMIN_CHAT_ID }}
         run: python runner.py --weekly
