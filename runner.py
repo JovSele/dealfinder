@@ -8,10 +8,16 @@ from scrapers.bazos import BazosScraper
 from processing import filters, deal_score
 from storage import db
 from outputs import telegram
+from scrapers.sreality import SrealityScraper
 
 SCRAPERS = [
-    BazosScraper(url)
-    for url in config.BAZOS_SEARCH_URLS
+    # --- Slovak market ---
+    *[BazosScraper(url) for url in config.BAZOS_SEARCH_URLS],
+
+    # --- Czech market ---
+    SrealityScraper(category="byty", region_id=16, pages=5),
+    SrealityScraper(category="domy", region_id=16, pages=5),
+    # SrealityScraper(category="byty", region_id=10, pages=5),  # Praha
 ]
 
 OUTPUTS = [
@@ -58,8 +64,6 @@ def send_pending_free_alerts() -> int:
 
     sent = 0
     for listing in pending:
-        # Zoberiem score z DB ak existuje — pre free kanál postačí None
-        # (deal_score.score() potrebuje živý inzerát, tu máme dict z DB)
         try:
             sc = deal_score.score(listing)
         except Exception:
