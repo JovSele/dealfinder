@@ -12,12 +12,6 @@ import config
 
 
 def send_alert(listing: dict, score: dict | None = None) -> None:
-    """Pošli Telegram správu o novom inzeráte (platený / okamžitý kanál).
-
-    Args:
-        listing: inzerát dict (z BaseScraper)
-        score:   Deal Score dict (z deal_score.score()) alebo None
-    """
     if not config.TELEGRAM_TOKEN or not config.TELEGRAM_CHAT_ID:
         _log("TELEGRAM_TOKEN alebo TELEGRAM_CHAT_ID nie je nastavený — preskakujem")
         return
@@ -27,12 +21,6 @@ def send_alert(listing: dict, score: dict | None = None) -> None:
 
 
 def send_free_alert(listing: dict, score: dict | None = None) -> None:
-    """Pošli Telegram správu do Free kanála s oneskorením.
-
-    Rovnaký obsah ako send_alert(), ale:
-    - posiela na TELEGRAM_FREE_CHAT_ID
-    - pridáva ⏰ badge a info o oneskorení
-    """
     if not config.TELEGRAM_TOKEN or not config.TELEGRAM_FREE_CHAT_ID:
         _log("TELEGRAM_FREE_CHAT_ID nie je nastavený — preskakujem free alert")
         return
@@ -42,6 +30,16 @@ def send_free_alert(listing: dict, score: dict | None = None) -> None:
 
 
 # ── Interné ───────────────────────────────────────────────────
+
+def _currency(listing: dict) -> str:
+    """CZK pre Sreality, EUR pre všetko ostatné."""
+    return "Kč" if listing.get("source", "").startswith("sreality") else "€"
+
+
+def _fmt_price(value: int | float, currency: str) -> str:
+    """Formátuj cenu s medzerou ako oddeľovačom tisícov."""
+    return f"{int(value):,}".replace(",", " ") + f" {currency}"
+
 
 def _send(chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
@@ -62,6 +60,7 @@ def _send(chat_id: str, text: str) -> None:
 
 
 def _format_message(listing: dict, score: dict | None, free_delay: bool = False) -> str:
+    currency = _currency(listing)
     lines = []
 
     # Hlavička
@@ -80,7 +79,7 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
     # Cena
     price = listing.get("price", 0)
     if price:
-        lines.append(f"💰 {price:,} €".replace(",", " "))
+        lines.append(f"💰 {_fmt_price(price, currency)}")
     else:
         lines.append("💰 Cena neuvedená")
 
@@ -92,8 +91,8 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
     # Deal Score detail
     if score:
         lines.append(
-            f"📊 {score['price_per_m2']:,} €/m²"
-            f" vs priemer {score['avg_per_m2']:,} €/m²"
+            f"📊 {_fmt_price(score['price_per_m2'], currency)}/m²"
+            f" vs priemer {_fmt_price(score['avg_per_m2'], currency)}/m²"
         )
 
     # Lokalita
