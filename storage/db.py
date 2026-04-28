@@ -48,6 +48,13 @@ CREATE INDEX IF NOT EXISTS idx_listings_locality
     ON listings(locality, source);
 """
 
+# Migrácie — každá sa pokúsi raz, pri chybe (stĺpec už existuje) ticho preskočí
+MIGRATIONS = [
+    "ALTER TABLE listings ADD COLUMN district TEXT DEFAULT ''",
+    "ALTER TABLE listings ADD COLUMN rooms    TEXT DEFAULT ''",
+    "ALTER TABLE listings ADD COLUMN hash     TEXT DEFAULT ''",
+]
+
 
 # ── Connection ────────────────────────────────────────────────
 
@@ -65,9 +72,15 @@ def _conn():
 # ── Init ──────────────────────────────────────────────────────
 
 def init():
-    """Vytvor tabuľky ak neexistujú. Volaj raz pri štarte."""
+    """Vytvor tabuľky ak neexistujú + spusti migrácie. Volaj raz pri štarte."""
     with _conn() as con:
         con.executescript(SCHEMA)
+        for migration in MIGRATIONS:
+            try:
+                con.execute(migration)
+                con.commit()
+            except sqlite3.OperationalError:
+                pass  # stĺpec už existuje — OK
 
 
 # ── Listings ──────────────────────────────────────────────────
@@ -135,8 +148,6 @@ def bootstrap_seen(listings: list[dict]) -> None:
             "INSERT OR IGNORE INTO seen_ids (id, source, first_seen) VALUES (?, ?, ?)",
             [(l["id"], l["source"], now) for l in listings],
         )
-        # Bootstrap inzeráty nechceme posielať do free kanála —
-        # existovali pred spustením bota
         con.executemany(
             "INSERT OR IGNORE INTO free_sent (id, source, sent_at) VALUES (?, ?, ?)",
             [(l["id"], l["source"], now) for l in listings],
@@ -149,8 +160,6 @@ def get_pending_free_alerts(delay_hours: int = 24) -> list[dict]:
     """Vráti inzeráty ktoré:
     - boli prvýkrát videné pred viac ako delay_hours hodinami
     - ešte neboli poslané do Free kanála
-
-    Tieto pôjdu do DEALFINDER FREE Telegram kanála s ⏰ badge.
     """
     with _conn() as con:
         rows = con.execute(
