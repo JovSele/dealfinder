@@ -171,10 +171,17 @@ def send_weekly_free_summary(deals_this_week: list) -> None:
 
 def _send(chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{config.TELEGRAM_TOKEN}/sendMessage"
-    payload = { ... }
+    payload = {
+        "chat_id":                  chat_id,
+        "text":                     text,
+        "parse_mode":               "Markdown",
+        "disable_web_page_preview": False,
+    }
     try:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code == 200:
             _log(f"Alert odoslaný (chat {chat_id}): {text[:50]}")
         else:
-            _log(f"Telegram API chyba {r.status_code} pre chat [{chat_id}]: {r.text[:100]}")  # ← pridaj chat_id
+            _log(f"Telegram API chyba {r.status_code} pre chat [{chat_id}]: {r.text[:100]}")
+    except requests.RequestException as e:
+        _log(f"Sieťová chyba: {e}")
