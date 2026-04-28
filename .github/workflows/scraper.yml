@@ -25,6 +25,25 @@ jobs:
           path: .
         continue-on-error: true  # prvý beh nemá artifact
 
+      - name: Debug Sreality API
+        run: |
+          python3 -c "
+          import requests, json
+          r = requests.get(
+              'https://www.sreality.cz/api/cs/v2/estates',
+              params={'category_main_cb': 2, 'category_type_cb': 1, 'locality_region_id': 16, 'per_page': 5, 'page': 1},
+              headers={
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                  'Referer': 'https://www.sreality.cz/',
+                  'Accept': 'application/json',
+              },
+              timeout=15,
+          )
+          print('Status:', r.status_code)
+          print('Content-Type:', r.headers.get('Content-Type'))
+          print('Body (prvých 500 znakov):', r.text[:500])
+          "
+
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
