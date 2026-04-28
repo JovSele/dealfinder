@@ -25,6 +25,37 @@ jobs:
           path: .
         continue-on-error: true  # prvý beh nemá artifact
 
+      - name: Debug Sreality regions
+        run: |
+          python3 -c "
+          import requests
+
+          headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+              'Referer': 'https://www.sreality.cz/',
+              'Accept': 'application/json',
+          }
+
+          # Test roznych region IDs pre Stredocesky kraj
+          # Aj bez regionu — overime ze API vobec vracia domy
+          tests = [
+              ('bez regionu', {}),
+              ('region 16', {'locality_region_id': 16}),
+              ('region 2',  {'locality_region_id': 2}),
+              ('region 3',  {'locality_region_id': 3}),
+          ]
+
+          for label, extra in tests:
+              params = {'category_main_cb': 2, 'category_type_cb': 1, 'per_page': 3, 'page': 1, **extra}
+              r = requests.get('https://www.sreality.cz/api/cs/v2/estates', params=params, headers=headers, timeout=15)
+              d = r.json()
+              count = len(d.get('_embedded', {}).get('estates', []))
+              size = d.get('result_size', '?')
+              print(f'{label}: result_size={size}, estates={count}')
+              if count:
+                  print('  ->',  d['_embedded']['estates'][0].get('locality'))
+          "
+
       - name: Debug Sreality API
         run: |
           python3 -c "
