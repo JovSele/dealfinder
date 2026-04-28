@@ -15,10 +15,11 @@ SCRAPERS = [
     *[BazosScraper(url) for url in config.BAZOS_SEARCH_URLS],
 
     # --- Czech market ---
-    SrealityScraper(category="byty", region_id=11, pages=5),
-    SrealityScraper(category="domy", region_id=11, pages=5),
-    # SrealityScraper(category="byty", region_id=10, pages=5),  # Praha
+    SrealityScraper(source="sreality/byty", category_main_cb=1, category_type_cb=1, region_id=11, pages=5),
+    SrealityScraper(source="sreality/domy", category_main_cb=2, category_type_cb=1, region_id=11, pages=5),
 ]
+
+
 
 OUTPUTS = [
     telegram,
