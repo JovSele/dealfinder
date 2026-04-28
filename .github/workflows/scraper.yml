@@ -33,6 +33,13 @@ jobs:
         run: |
           echo "ADMIN_CHAT_ID set: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID != '' }}"
 
+      - name: Debug secrets
+        run: |
+          echo "TOKEN set: ${{ secrets.TELEGRAM_TOKEN != '' }}"
+          echo "CHAT_ID set: ${{ secrets.TELEGRAM_CHAT_ID != '' }}"
+          echo "FREE_CHAT_ID set: ${{ secrets.TELEGRAM_FREE_CHAT_ID != '' }}"
+          echo "ADMIN_CHAT_ID set: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID != '' }}"
+
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
