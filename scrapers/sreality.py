@@ -52,7 +52,7 @@ TYPE_PREDAJ = 1
 # Regióny (locality_region_id)
 REGIONS = {
     "praha":            10,
-    "stredocesky_kraj": 16,
+    "stredocesky_kraj": 11,
     "jihocesky_kraj":   17,
     "plzensky_kraj":    18,
     "karlovarsky_kraj": 19,

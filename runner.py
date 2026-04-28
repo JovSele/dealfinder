@@ -15,8 +15,8 @@ SCRAPERS = [
     *[BazosScraper(url) for url in config.BAZOS_SEARCH_URLS],
 
     # --- Czech market ---
-    SrealityScraper(category="byty", region_id=16, pages=5),
-    SrealityScraper(category="domy", region_id=16, pages=5),
+    SrealityScraper(category="byty", region_id=11, pages=5),
+    SrealityScraper(category="domy", region_id=11, pages=5),
     # SrealityScraper(category="byty", region_id=10, pages=5),  # Praha
 ]
 
