@@ -56,6 +56,24 @@ jobs:
           path: dealfinder.db
           retention-days: 14
 
+      - name: Test Telegram direct
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 -c "
+          import requests, os
+          token = os.environ['TELEGRAM_TOKEN']
+          chat_id = os.environ['TELEGRAM_CHAT_ID']
+          print('chat_id repr:', repr(chat_id))
+          r = requests.post(
+              f'https://api.telegram.org/bot{token}/sendMessage',
+              json={'chat_id': chat_id, 'text': 'test z Actions'},
+              timeout=10,
+          )
+          print(r.status_code, r.json())
+          "
+
   weekly-summary:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' && github.event.schedule == '0 8 * * 0'
