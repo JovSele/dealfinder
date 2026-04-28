@@ -203,3 +203,42 @@ def stats() -> dict:
         "free_sent":      free_out,
         "by_source":      {r["source"]: r["n"] for r in sources},
     }
+
+
+# ── Weekly Stats ─────────────────────────────────────────────────────
+
+def get_weekly_deals() -> list[dict]:
+    """Vráti inzeráty z posledných 7 dní kde deal_score >= 10%."""
+    with _conn() as con:
+        rows = con.execute("""
+            SELECT l.source, l.title, l.price, l.area_m2, l.locality, l.url, l.district, l.rooms
+            FROM listings l
+            JOIN seen_ids s ON l.id = s.id AND l.source = s.source
+            WHERE datetime(s.first_seen) >= datetime('now', '-7 days')
+              AND l.price > 0
+              AND l.area_m2 > 0
+            ORDER BY s.first_seen DESC
+        """).fetchall()
+
+    deals = []
+    for row in rows:
+        listing = {
+            "source":   row[0],
+            "title":    row[1],
+            "price":    row[2],
+            "area_m2":  row[3],
+            "locality": row[4],
+            "url":      row[5],
+            "district": row[6],
+            "rooms":    row[7],
+        }
+        try:
+            from processing import deal_score as ds
+            sc = ds.score(listing)
+            if sc and sc["pct_below"] >= 10:
+                listing["pct_below"] = sc["pct_below"]
+                deals.append(listing)
+        except Exception:
+            pass
+
+    return deals

@@ -96,16 +96,41 @@ def main() -> None:
 
     db.init()
 
+    if "--weekly" in sys.argv:
+        log("Režim: --weekly summary")
+                
+        deals = db.get_weekly_deals()
+        telegram.send_weekly_free_summary(deals)
+        
+        count = len(deals)
+        if count:
+            log(f"Weekly summary odoslaný — {count} dealy tento týždeň")
+            telegram.send_admin(f"📊 *Weekly summary odoslaný* — {count} dealy")
+        else:
+            log("Weekly summary preskočený — žiadne dealy tento týždeň")
+            telegram.send_admin("📊 *Weekly summary preskočený* — 0 dealy tento týždeň")
+        return
+
     # GitHub Actions / jednorazové spustenie
     if "--once" in sys.argv:
         log("Režim: --once")
         bootstrap()
-        stats = run_once()
-        free_sent = send_pending_free_alerts()
-        log(
-            f"Hotovo — Nové: {stats['new']} | Dealy: {stats['deals']} | "
-            f"Alerty: {stats['alerted']} | Free odoslané: {free_sent}"
-        )
+
+        try:
+            stats = run_once()
+            free_sent = send_pending_free_alerts()
+            log(
+                f"Hotovo — Nové: {stats['new']} | Dealy: {stats['deals']} | "
+                f"Alerty: {stats['alerted']} | Free odoslané: {free_sent}"
+            )
+            telegram.send_run_summary(stats, free_sent)
+        except Exception as e:
+            import traceback
+            err = traceback.format_exc()
+            log(f"CHYBA: {err}")
+            telegram.send_admin(f"🔴 *DealFinder CRASH*\n```\n{err[:300]}\n```")
+            raise
+
         return
 
     # Normálny režim — nekonečná slučka
@@ -136,6 +161,7 @@ def main() -> None:
 def log(msg: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] [runner] {msg}")
+
 
 
 if __name__ == "__main__":

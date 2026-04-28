@@ -114,3 +114,57 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
 def _log(msg: str) -> None:
     from datetime import datetime
     print(f"[{datetime.now().strftime('%H:%M:%S')}] [telegram] {msg}")
+
+def send_admin(msg: str) -> None:
+    """Pošli správu do admin kanála / chatu."""
+    if not config.TELEGRAM_TOKEN or not config.TELEGRAM_ADMIN_CHAT_ID:
+        return
+    _send(config.TELEGRAM_ADMIN_CHAT_ID, msg)
+
+
+def send_run_summary(stats: dict, free_sent: int, error: str | None = None) -> None:
+    """Odošle admin súhrn po každom GitHub Actions behu."""
+    from datetime import datetime
+    ts = datetime.now().strftime("%d.%m. %H:%M")
+
+    if error:
+        msg = (
+            f"🔴 *DealFinder — CHYBA* `{ts}`\n\n"
+            f"```\n{error[:300]}\n```"
+        )
+    else:
+        dealy = stats.get("deals", 0)
+        deal_icon = "🔥" if dealy > 0 else "✅"
+        msg = (
+            f"{deal_icon} *DealFinder run* `{ts}`\n\n"
+            f"📥 Stiahnuté: `{stats.get('scraped', 0)}`\n"
+            f"🆕 Nové: `{stats.get('new', 0)}`\n"
+            f"💎 Dealy: `{dealy}`\n"
+            f"📨 Alerty: `{stats.get('alerted', 0)}`\n"
+            f"⏰ Free odoslané: `{free_sent}`"
+        )
+
+    send_admin(msg)
+
+
+def send_weekly_free_summary(deals_this_week: list) -> None:
+    """Týždenný súhrn do FREE kanála — len ak boli nejaké dealy."""
+    if not deals_this_week:
+        return  # ticho je lepšie ako "tento týždeň nič"
+
+    best = max(deals_this_week, key=lambda d: d.get("pct_below", 0))
+    currency = _currency(best)
+
+    msg = (
+        f"📊 *Týždenný súhrn — DealFinder FREE*\n\n"
+        f"Tento týždeň sme našli *{len(deals_this_week)} dealy*.\n\n"
+        f"🏆 Najlepší deal:\n"
+        f"*{best['title']}*\n"
+        f"💰 {_fmt_price(best['price'], currency)} "
+        f"(-{best.get('pct_below', 0):.0f}% pod trhom)\n"
+        f"📍 {best.get('locality', '')}\n\n"
+        f"_Chceš alerty okamžite? → dealfinder.sk_"
+    )
+
+    if config.TELEGRAM_TOKEN and config.TELEGRAM_FREE_CHAT_ID:
+        _send(config.TELEGRAM_FREE_CHAT_ID, msg)

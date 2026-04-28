@@ -3,6 +3,7 @@ name: DealFinder Scraper
 on:
   schedule:
     - cron: '*/20 * * * *'
+    - cron: "0 8 * * 0"         # každú nedeľu o 8:00 — weekly summary
   workflow_dispatch:
 
 jobs:
@@ -25,86 +26,13 @@ jobs:
           path: .
         continue-on-error: true  # prvý beh nemá artifact
 
-
-      - name: Find correct region IDs
-        run: |
-          python3 -c "
-          import requests, time
-
-          headers = {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Referer': 'https://www.sreality.cz/',
-              'Accept': 'application/json',
-          }
-
-          for rid in range(1, 21):
-              r = requests.get(
-                  'https://www.sreality.cz/api/cs/v2/estates',
-                  params={'category_main_cb': 2, 'category_type_cb': 1, 'per_page': 1, 'page': 1, 'locality_region_id': rid},
-                  headers=headers, timeout=10,
-              )
-              size = r.json().get('result_size', 0)
-              estates = r.json().get('_embedded', {}).get('estates', [])
-              loc = estates[0].get('locality', '') if estates else ''
-              print(f'region {rid:2d}: size={size:5d}  {loc}')
-              time.sleep(0.3)
-          "
-
-      - name: Debug Sreality regions
-        run: |
-          python3 -c "
-          import requests
-
-          headers = {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-              'Referer': 'https://www.sreality.cz/',
-              'Accept': 'application/json',
-          }
-
-          # Test roznych region IDs pre Stredocesky kraj
-          # Aj bez regionu — overime ze API vobec vracia domy
-          tests = [
-              ('bez regionu', {}),
-              ('region 16', {'locality_region_id': 16}),
-              ('region 2',  {'locality_region_id': 2}),
-              ('region 3',  {'locality_region_id': 3}),
-          ]
-
-          for label, extra in tests:
-              params = {'category_main_cb': 2, 'category_type_cb': 1, 'per_page': 3, 'page': 1, **extra}
-              r = requests.get('https://www.sreality.cz/api/cs/v2/estates', params=params, headers=headers, timeout=15)
-              d = r.json()
-              count = len(d.get('_embedded', {}).get('estates', []))
-              size = d.get('result_size', '?')
-              print(f'{label}: result_size={size}, estates={count}')
-              if count:
-                  print('  ->',  d['_embedded']['estates'][0].get('locality'))
-          "
-
-      - name: Debug Sreality API
-        run: |
-          python3 -c "
-          import requests, json
-          r = requests.get(
-              'https://www.sreality.cz/api/cs/v2/estates',
-              params={'category_main_cb': 2, 'category_type_cb': 1, 'locality_region_id': 16, 'per_page': 5, 'page': 1},
-              headers={
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                  'Referer': 'https://www.sreality.cz/',
-                  'Accept': 'application/json',
-              },
-              timeout=15,
-          )
-          print('Status:', r.status_code)
-          print('Content-Type:', r.headers.get('Content-Type'))
-          print('Body (prvých 500 znakov):', r.text[:500])
-          "
-
+      
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_FREE_CHAT_ID: ${{ secrets.TELEGRAM_FREE_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
           DB_PATH: dealfinder.db
         run: python runner.py --once
 
@@ -113,4 +41,33 @@ jobs:
         with:
           name: dealfinder-db
           path: dealfinder.db
-          retention-days: 7
+          retention-days: 14
+
+  weekly-summary:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 8 * * 0'
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download DB artifact
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: dealfinder-db
+          path: .
+        continue-on-error: true
+
+      - name: Run weekly summary
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_FREE_CHAT_ID: ${{ secrets.TELEGRAM_FREE_CHAT_ID }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: python runner.py --weekly

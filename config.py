@@ -9,6 +9,7 @@ load_dotenv()
 TELEGRAM_TOKEN        = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID      = os.getenv("TELEGRAM_CHAT_ID", "")       # platený / okamžitý kanál
 TELEGRAM_FREE_CHAT_ID = os.getenv("TELEGRAM_FREE_CHAT_ID", "")  # DEALFINDER FREE kanál
+TELEGRAM_ADMIN_CHAT_ID = os.getenv("TELEGRAM_ADMIN_CHAT_ID", "") # DEALFINDER ADMIN kanál
 
 # ── SCRAPING ─────────────────────────────────────────────────
 SCRAPE_INTERVAL_SEC = int(os.getenv("SCRAPE_INTERVAL_SEC", "300"))  # 5 minút
