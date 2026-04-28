@@ -24,6 +24,7 @@ import time
 import hashlib
 import requests
 from scrapers.base import BaseScraper
+from datetime import datetime
 
 # ─────────────────────────────────────────
 # KONŠTANTY
@@ -220,7 +221,8 @@ class SrealityScraper(BaseScraper):
                 "rooms":        rooms,
                 "url":          url,
                 "source":       self.source,       # "sreality_byty" | "sreality_domy"
-                "content_hash": content_hash,
+                "hash":         content_hash,
+                "scraped_at":   datetime.now().isoformat(),
             }
 
         except Exception as e:
