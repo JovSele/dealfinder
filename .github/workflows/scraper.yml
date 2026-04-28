@@ -26,20 +26,6 @@ jobs:
           path: .
         continue-on-error: true  # prvý beh nemá artifact
 
-      
-      - name: Debug env
-        env:
-          TELEGRAM_ADMIN_CHAT_ID: ${{ vars.TELEGRAM_ADMIN_CHAT_ID }}
-        run: |
-          echo "ADMIN_CHAT_ID set: ${{ vars.TELEGRAM_ADMIN_CHAT_ID != '' }}"
-
-      - name: Debug secrets
-        run: |
-          echo "TOKEN set: ${{ secrets.TELEGRAM_TOKEN != '' }}"
-          echo "CHAT_ID set: ${{ vars.TELEGRAM_CHAT_ID != '' }}"
-          echo "FREE_CHAT_ID set: ${{ vars.TELEGRAM_FREE_CHAT_ID != '' }}"
-          echo "ADMIN_CHAT_ID set: ${{ vars.TELEGRAM_ADMIN_CHAT_ID != '' }}"
-
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
@@ -55,24 +41,6 @@ jobs:
           name: dealfinder-db
           path: dealfinder.db
           retention-days: 14
-
-      - name: Test Telegram direct
-        env:
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ vars.TELEGRAM_CHAT_ID }}
-        run: |
-          python3 -c "
-          import requests, os
-          token = os.environ['TELEGRAM_TOKEN']
-          chat_id = os.environ['TELEGRAM_CHAT_ID']
-          print('chat_id repr:', repr(chat_id))
-          r = requests.post(
-              f'https://api.telegram.org/bot{token}/sendMessage',
-              json={'chat_id': chat_id, 'text': 'test z Actions'},
-              timeout=10,
-          )
-          print(r.status_code, r.json())
-          "
 
   weekly-summary:
     runs-on: ubuntu-latest
