@@ -27,6 +27,12 @@ jobs:
         continue-on-error: true  # prvý beh nemá artifact
 
       
+      - name: Debug env
+        env:
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: |
+          echo "ADMIN_CHAT_ID set: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID != '' }}"
+
       - name: Run scraper
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
