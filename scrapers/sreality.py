@@ -32,7 +32,7 @@ class SrealityScraper(BaseScraper):
         category_main_cb: int,   # 1 = byty, 2 = domy
         category_type_cb: int,   # 1 = predaj, 2 = prenájom
         region_id: int,
-        pages: int = 5,
+        pages: int = 200,
     ):
         self.source = source
         self._category_main = category_main_cb
@@ -46,14 +46,30 @@ class SrealityScraper(BaseScraper):
 
     def fetch(self) -> list[dict]:
         listings = []
-        for page in range(1, self._pages + 1):
+        seen_hashes = set()  # lokálne pre tento run — dedup v rámci scrapera
+        
+        for page in range(1, 201):  # max 200 strán ako safety limit
             page_listings = self._fetch_page(page)
+            
             if not page_listings:
+                break  # prázdna strana = koniec
+            
+            # Zastav sa ak sú všetky na tejto strane už known
+            new_on_page = [l for l in page_listings 
+                        if l["id"] not in seen_hashes]
+            
+            if not new_on_page and page > 3:
+                # Prvé 3 strany vždy prejeď (safety)
+                self._log(f"Strana {page}: všetko known → stop")
                 break
-            listings.extend(page_listings)
-            time.sleep(0.8)
-
-        self._log(f"Stiahnutých {len(listings)} inzerátov")
+            
+            for l in new_on_page:
+                seen_hashes.add(l["id"])
+            listings.extend(new_on_page)
+            
+            time.sleep(1.2)  # trochu viac ako 0.8 pre väčší objem
+        
+        self._log(f"Stiahnutých {len(listings)} inzerátov ({page} strán)")
         return listings
 
     # ── Private ───────────────────────────────────────────────
