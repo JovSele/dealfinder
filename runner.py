@@ -42,10 +42,9 @@ def run_once() -> dict:
 
             sc = deal_score.score(listing)
 
-            should_alert = deal_score.is_deal(sc) or sc is None
-            if should_alert:
-                if deal_score.is_deal(sc):
-                    stats["deals"] += 1
+            
+            if deal_score.is_deal(sc):
+                stats["deals"] += 1
                 for output in OUTPUTS:
                     output.send_alert(listing, sc)
                 stats["alerted"] += 1

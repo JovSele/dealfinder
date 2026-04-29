@@ -7,7 +7,7 @@
 # Posiela s ⏰ badge a informáciou o oneskorení.
 
 import requests
-
+import time
 import config
 
 
@@ -53,10 +53,22 @@ def _send(chat_id: str, text: str) -> None:
         r = requests.post(url, json=payload, timeout=10)
         if r.status_code == 200:
             _log(f"Alert odoslaný (chat {chat_id}): {text[:50]}")
+        elif r.status_code == 429:
+            retry_after = r.json().get("parameters", {}).get("retry_after", 30)
+            _log(f"Rate limit — čakám {retry_after}s")
+            time.sleep(retry_after + 1)
+            # jeden retry
+            r2 = requests.post(url, json=payload, timeout=10)
+            if r2.status_code == 200:
+                _log(f"Alert odoslaný po retry (chat {chat_id}): {text[:50]}")
+            else:
+                _log(f"Retry zlyhalo {r2.status_code}: {r2.text[:100]}")
         else:
             _log(f"Telegram API chyba {r.status_code} pre chat [{chat_id}]: {r.text[:100]}")
     except requests.RequestException as e:
         _log(f"Sieťová chyba: {e}")
+    
+    time.sleep(0.5)  # vždy čakaj medzi správami
 
 
 def _format_message(listing: dict, score: dict | None, free_delay: bool = False) -> str:

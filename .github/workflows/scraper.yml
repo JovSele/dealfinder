@@ -2,14 +2,14 @@ name: DealFinder Scraper
 
 on:
   schedule:
-    - cron: '*/20 * * * *'
+    - cron: '*/30 * * * *'
     - cron: "0 8 * * 0"         # každú nedeľu o 8:00 — weekly summary
   workflow_dispatch:
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
