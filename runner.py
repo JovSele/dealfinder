@@ -114,7 +114,13 @@ def main() -> None:
     # GitHub Actions / jednorazové spustenie
     if "--once" in sys.argv:
         log("Režim: --once")
-        bootstrap()
+
+        # Bootstrap len ak je DB nová (prázdna)
+        if db.stats()["total_seen"] == 0:
+            log("Prázdna DB — spúšťam bootstrap")
+            bootstrap()
+        else:
+            log(f"DB existuje — bootstrap preskakujem")
 
         try:
             stats = run_once()

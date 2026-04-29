@@ -104,7 +104,7 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
     if score:
         lines.append(
             f"📊 {_fmt_price(score['price_per_m2'], currency)}/m²"
-            f" vs priemer {_fmt_price(score['avg_per_m2'], currency)}/m²"
+            f" vs medián {_fmt_price(score['avg_per_m2'], currency)}/m²"
         )
 
     # Lokalita
