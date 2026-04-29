@@ -46,28 +46,27 @@ class SrealityScraper(BaseScraper):
 
     def fetch(self) -> list[dict]:
         listings = []
-        seen_hashes = set()  # lokálne pre tento run — dedup v rámci scrapera
         
-        for page in range(1, 201):  # max 200 strán ako safety limit
+        for page in range(1, 201):
             page_listings = self._fetch_page(page)
             
             if not page_listings:
-                break  # prázdna strana = koniec
+                break
             
-            # Zastav sa ak sú všetky na tejto strane už known
-            new_on_page = [l for l in page_listings 
-                        if l["id"] not in seen_hashes]
+            listings.extend(page_listings)
             
-            if not new_on_page and page > 3:
-                # Prvé 3 strany vždy prejeď (safety)
+            # Zastav sa ak sú všetky na tejto strane už v DB
+            from storage import db
+            all_known = all(
+                not db.is_new(l["id"], l["source"]) 
+                for l in page_listings
+            )
+            
+            if all_known and page > 3:
                 self._log(f"Strana {page}: všetko known → stop")
                 break
             
-            for l in new_on_page:
-                seen_hashes.add(l["id"])
-            listings.extend(new_on_page)
-            
-            time.sleep(1.2)  # trochu viac ako 0.8 pre väčší objem
+            time.sleep(1.2)
         
         self._log(f"Stiahnutých {len(listings)} inzerátov ({page} strán)")
         return listings
