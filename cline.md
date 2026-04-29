@@ -90,15 +90,16 @@ def send_alert(listing: dict, score: dict) -> None:
 
 ## Current state (update this as you build)
 
-- [x] `config.py` — skeleton
+- [x] `config.py` — all settings via env vars
 - [x] `scrapers/base.py` — interface defined
 - [x] `scrapers/bazos.py` — working scraper
-- [x] `storage/db.py` — SQLite, listings + seen_ids tables
-- [x] `outputs/telegram.py` — alert sending
-- [ ] `processing/deal_score.py` — not started
-- [ ] `processing/filters.py` — not started
-- [ ] `runner.py` — not started
-- [ ] `storage/prices.py` — not started
+- [x] `scrapers/sreality.py` — working scraper (Sreality.cz API)
+- [x] `storage/db.py` — SQLite, listings + seen_ids + free_sent tables
+- [x] `outputs/telegram.py` — alert sending (paid + free + admin + weekly)
+- [x] `processing/deal_score.py` — implemented
+- [x] `processing/filters.py` — implemented
+- [x] `runner.py` — implemented (--once, --weekly, loop modes)
+- [ ] `storage/prices.py` — not needed (prices computed from DB)
 - [ ] `outputs/email.py` — not started
 
 ---
