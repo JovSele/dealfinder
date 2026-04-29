@@ -42,7 +42,8 @@ def score(listing: dict) -> dict | None:
     listing_per_m2 = price / area
 
     # 1. Skús lokalitu
-    comparables, scope = _get_comparables(locality, listing.get("district", ""), source)
+    category = _category(listing)
+    comparables, scope = _get_comparables(locality, listing.get("district", ""), source, category)
 
     if comparables is None:
         return None
@@ -72,41 +73,23 @@ def is_deal(score_result: dict | None) -> bool:
     return score_result["pct_below"] >= config.DEAL_SCORE_THRESHOLD_PCT
 
 
-def _get_comparables(locality: str, district: str, source: str) -> tuple[list | None, str]:
-    """
-    Vráť (comparables, scope) kde scope je "locality" alebo "district".
-    Vráť (None, "") ak ani jeden nemá dosť dát.
-    """
-    # Primárne: lokalita
-    comps = _fetch_valid(locality, source)
+def _get_comparables(locality, district, source, category=""):
+    comps = _fetch_valid(locality, source, category)
     if len(comps) >= config.DEAL_SCORE_MIN_SAMPLES:
         if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
             return comps, "locality"
-        # Málo samples v lokalite — skús okres ako rozšírenie
         if district and district != locality:
-            district_comps = _fetch_valid(district, source)
+            district_comps = _fetch_valid(district, source, category)
             if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
                 return district_comps, "district"
         return comps, "locality"
 
-    # Fallback: okres
     if district and district != locality:
-        district_comps = _fetch_valid(district, source)
+        district_comps = _fetch_valid(district, source, category)
         if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
             return district_comps, "district"
 
     return None, ""
-
-
-def _fetch_valid(locality: str, source: str) -> list:
-    """Stiahni comparables a odfiltruj neplatné."""
-    if not locality:
-        return []
-    comparables = db.get_listings_by_locality(locality, source)
-    return [
-        c for c in comparables
-        if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
-    ]
 
 
 def _label(pct_below: float) -> str:
@@ -117,3 +100,39 @@ def _label(pct_below: float) -> str:
     if pct_below >= 0:
         return f"−{pct_below:.0f}% pod trhom"
     return f"+{abs(pct_below):.0f}% nad trhom"
+
+def _category(listing: dict) -> str:
+    """Urči kategóriu nehnuteľnosti pre správne porovnanie."""
+    source = listing.get("source", "")
+    title  = listing.get("title", "").lower()
+
+    # Sreality — jasný zdroj
+    if "byty" in source:
+        return "byt"
+    if "domy" in source:
+        # Rozlíš chatu od rodinného domu podľa title
+        if any(w in title for w in ["chata", "chalupa", "rekreační"]):
+            return "chata"
+        return "dum"
+
+    # Bazos — podľa title
+    if any(w in title for w in ["chata", "chalupa", "rekreační"]):
+        return "chata"
+    if any(w in title for w in ["rodinný", "rodinného", "dom", "dům"]):
+        return "dum"
+    return "byt"
+
+
+def _fetch_valid(locality: str, source: str, category: str = "") -> list:
+    """Stiahni comparables — filtruj podľa lokality, zdroja aj kategórie."""
+    if not locality:
+        return []
+    comparables = db.get_listings_by_locality(locality, source)
+    result = [
+        c for c in comparables
+        if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
+    ]
+    # Filter na rovnakú kategóriu
+    if category:
+        result = [c for c in result if _category(c) == category]
+    return result
