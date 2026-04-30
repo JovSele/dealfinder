@@ -17,6 +17,10 @@ SCRAPERS = [
     # --- Czech market ---
     SrealityScraper(source="sreality/byty", category_main_cb=1, category_type_cb=1, region_id=11),
     SrealityScraper(source="sreality/domy", category_main_cb=2, category_type_cb=1, region_id=11),
+
+    # --- Praha ---
+    SrealityScraper(source="sreality/byty/praha", category_main_cb=1, category_type_cb=1, region_id=10),
+    SrealityScraper(source="sreality/domy/praha", category_main_cb=2, category_type_cb=1, region_id=10),
 ]
 
 
