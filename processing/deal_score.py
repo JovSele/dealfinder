@@ -3,9 +3,11 @@
 # Deal Score = o koľko % je inzerát lacnejší ako MEDIÁN v lokalite (cena/m²)
 # Príklad: med. 3000 €/m², inzerát 2500 €/m² → score = -16.7%
 #
-# Zmeny oproti v1:
+# Zmeny:
 #   - aritmetický priemer → medián (robustnejší voči outlierom)
 #   - fallback na okres ak lokalita má < MIN_SAMPLES
+#   - category filter — byty sa porovnávajú len s bytmi, domy s domami
+#   - price range filter — vylúči novostavky pri porovnaní so starými bytmi (±60% od ceny inzerátu)
 
 import statistics
 
@@ -14,6 +16,9 @@ from storage import db
 
 # Ak lokalita má menej samples, rozšírime na okres (district)
 DISTRICT_FALLBACK_THRESHOLD = 15
+
+# Porovnávaj len comparables v tomto rozsahu od ceny inzerátu (napr. 0.4 = ±60%)
+PRICE_RANGE_RATIO = 0.4
 
 
 def score(listing: dict) -> dict | None:
@@ -40,10 +45,11 @@ def score(listing: dict) -> dict | None:
         return None
 
     listing_per_m2 = price / area
-
-    # 1. Skús lokalitu
     category = _category(listing)
-    comparables, scope = _get_comparables(locality, listing.get("district", ""), source, category)
+
+    comparables, scope = _get_comparables(
+        locality, listing.get("district", ""), source, category, listing_per_m2
+    )
 
     if comparables is None:
         return None
@@ -59,7 +65,7 @@ def score(listing: dict) -> dict | None:
     return {
         "pct_below":    round(pct_below, 1),
         "price_per_m2": round(listing_per_m2),
-        "avg_per_m2":   round(median_per_m2),   # zachované pre kompatibilitu s telegram.py
+        "avg_per_m2":   round(median_per_m2),
         "label":        _label(pct_below),
         "sample_size":  len(comparables),
         "scope":        scope,
@@ -73,23 +79,74 @@ def is_deal(score_result: dict | None) -> bool:
     return score_result["pct_below"] >= config.DEAL_SCORE_THRESHOLD_PCT
 
 
-def _get_comparables(locality, district, source, category=""):
-    comps = _fetch_valid(locality, source, category)
+def _get_comparables(locality, district, source, category="", listing_per_m2=0):
+    comps = _fetch_valid(locality, source, category, listing_per_m2)
     if len(comps) >= config.DEAL_SCORE_MIN_SAMPLES:
         if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
             return comps, "locality"
         if district and district != locality:
-            district_comps = _fetch_valid(district, source, category)
+            district_comps = _fetch_valid(district, source, category, listing_per_m2)
             if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
                 return district_comps, "district"
         return comps, "locality"
 
     if district and district != locality:
-        district_comps = _fetch_valid(district, source, category)
+        district_comps = _fetch_valid(district, source, category, listing_per_m2)
         if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
             return district_comps, "district"
 
     return None, ""
+
+
+def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0) -> list:
+    """Stiahni comparables — filtruj podľa lokality, zdroja, kategórie a cenového pásma.
+
+    Price range filter:
+        Vylúči inzeráty ktoré sú viac ako 2.5x drahšie alebo lacnejšie ako inzerát.
+        Zabraňuje porovnávaniu novostaviek (130k Kč/m²) so starými bytmi (40k Kč/m²).
+        Príklad: inzerát 40 000 Kč/m² → comparables musia byť v pásme 16 000–100 000 Kč/m²
+    """
+    if not locality:
+        return []
+
+    comparables = db.get_listings_by_locality(locality, source)
+
+    result = [
+        c for c in comparables
+        if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
+    ]
+
+    # Filter na rovnakú kategóriu
+    if category:
+        result = [c for c in result if _category(c) == category]
+
+    # Price range filter — vylúči extrémne outliere
+    if listing_per_m2 > 0:
+        result = [
+            c for c in result
+            if PRICE_RANGE_RATIO <= (c["price"] / c["area_m2"]) / listing_per_m2 <= (1 / PRICE_RANGE_RATIO)
+        ]
+
+    return result
+
+
+def _category(listing: dict) -> str:
+    """Urči kategóriu nehnuteľnosti pre správne porovnanie."""
+    source = listing.get("source", "")
+    title  = listing.get("title", "").lower()
+
+    if "byty" in source:
+        return "byt"
+    if "domy" in source:
+        if any(w in title for w in ["chata", "chalupa", "rekreační"]):
+            return "chata"
+        return "dum"
+
+    if any(w in title for w in ["chata", "chalupa", "rekreační"]):
+        return "chata"
+    if any(w in title for w in ["rodinný", "rodinného", "dom", "dům"]):
+        return "dum"
+    return "byt"
 
 
 def _label(pct_below: float) -> str:
@@ -100,39 +157,3 @@ def _label(pct_below: float) -> str:
     if pct_below >= 0:
         return f"−{pct_below:.0f}% pod trhom"
     return f"+{abs(pct_below):.0f}% nad trhom"
-
-def _category(listing: dict) -> str:
-    """Urči kategóriu nehnuteľnosti pre správne porovnanie."""
-    source = listing.get("source", "")
-    title  = listing.get("title", "").lower()
-
-    # Sreality — jasný zdroj
-    if "byty" in source:
-        return "byt"
-    if "domy" in source:
-        # Rozlíš chatu od rodinného domu podľa title
-        if any(w in title for w in ["chata", "chalupa", "rekreační"]):
-            return "chata"
-        return "dum"
-
-    # Bazos — podľa title
-    if any(w in title for w in ["chata", "chalupa", "rekreační"]):
-        return "chata"
-    if any(w in title for w in ["rodinný", "rodinného", "dom", "dům"]):
-        return "dum"
-    return "byt"
-
-
-def _fetch_valid(locality: str, source: str, category: str = "") -> list:
-    """Stiahni comparables — filtruj podľa lokality, zdroja aj kategórie."""
-    if not locality:
-        return []
-    comparables = db.get_listings_by_locality(locality, source)
-    result = [
-        c for c in comparables
-        if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
-    ]
-    # Filter na rovnakú kategóriu
-    if category:
-        result = [c for c in result if _category(c) == category]
-    return result
