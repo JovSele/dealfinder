@@ -80,9 +80,8 @@ class BazosScraper(BaseScraper):
         popis_tag = item.select_one(".popis")
         popis_text = popis_tag.get_text(" ", strip=True) if popis_tag else ""
         area_m2 = self._extract_area(title + " " + popis_text)
-        district = self._extract_district(locality)   
-        rooms    = self._extract_rooms(title + " " + popis_text)  
-
+        district = self._extract_district(locality)
+        rooms    = self._extract_rooms(title + " " + popis_text)
 
         return self._make_listing(
             id=inzerat_id,
@@ -94,16 +93,21 @@ class BazosScraper(BaseScraper):
             district=district,
             rooms=rooms,
         )
+
     @staticmethod
-    def _extract_district(locality: str) -> str:
-        """Vezmi prvú časť lokality — zvyčajne mesto/mestská časť.
-        Bazoš vracia napr. 'Bratislava - Petržalka' alebo 'Košice-Západ'
-        """
-        if not locality:
-            return ""
-        # Rozdeľ podľa pomlčky alebo čiarky
-        parts = re.split(r"\s*[-–,]\s*", locality, maxsplit=1)
-        return parts[1].strip() if len(parts) > 1 else ""
+    def _extract_id(url: str) -> str | None:
+        m = re.search(r"/inzerat/(\d+)/", url)
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _parse_price(text: str) -> int:
+        digits = re.sub(r"[^\d]", "", text)
+        return int(digits) if digits else 0
+
+    @staticmethod
+    def _extract_area(text: str) -> int:
+        m = re.search(r"(\d{2,4})\s*m[²2]", text, re.IGNORECASE)
+        return int(m.group(1)) if m else 0
 
     @staticmethod
     def _extract_rooms(text: str) -> int:
@@ -120,21 +124,6 @@ class BazosScraper(BaseScraper):
         if m:
             return int(m.group(1))
         return 0
-
-    @staticmethod
-    def _extract_id(url: str) -> str | None:
-        m = re.search(r"/inzerat/(\d+)/", url)
-        return m.group(1) if m else None
-
-    @staticmethod
-    def _parse_price(text: str) -> int:
-        digits = re.sub(r"[^\d]", "", text)
-        return int(digits) if digits else 0
-
-    @staticmethod
-    def _extract_area(text: str) -> int:
-        m = re.search(r"(\d{2,4})\s*m[²2]", text, re.IGNORECASE)
-        return int(m.group(1)) if m else 0
 
     # Mapa PSČ → mestská časť Bratislava
     _BA_PSC = {

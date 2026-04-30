@@ -50,6 +50,8 @@ DB_PATH = os.getenv("DB_PATH", "dealfinder.db")
 # ── DEAL SCORE ────────────────────────────────────────────────
 DEAL_SCORE_THRESHOLD_PCT = float(os.getenv("DEAL_SCORE_THRESHOLD_PCT", "10.0"))
 DEAL_SCORE_MIN_SAMPLES   = int(os.getenv("DEAL_SCORE_MIN_SAMPLES", "5"))
+DEAL_SCORE_MAX_PCT       = float(os.getenv("DEAL_SCORE_MAX_PCT", "60.0"))  
+ALERT_LIMIT_PER_RUN      = int(os.getenv("ALERT_LIMIT_PER_RUN", "10")) 
 
 # ── FILTERS ───────────────────────────────────────────────────
 FILTER_MIN_PRICE_EUR = int(os.getenv("FILTER_MIN_PRICE_EUR", "10000"))

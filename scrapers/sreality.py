@@ -85,7 +85,8 @@ class SrealityScraper(BaseScraper):
             r = self._session.get(self.BASE_URL, params=params, timeout=15)
             r.raise_for_status()
             estates = r.json().get("_embedded", {}).get("estates", [])
-            return [self._parse(e) for e in estates if self._parse(e)]
+            parsed = [self._parse(e) for e in estates]
+            return [l for l in parsed if l]   # ← filter None po parsovaní
         except Exception as e:
             self._log(f"Chyba na strane {page}: {e}")
             return []
