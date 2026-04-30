@@ -72,7 +72,7 @@ def _conn():
 # ── Init ──────────────────────────────────────────────────────
 
 def init():
-    """Vytvor tabuľky ak neexistujú + spusti migrácie. Volaj raz pri štarte."""
+    """Vytvor tabuľky ak neexistujú + spusti migrácie."""
     with _conn() as con:
         con.executescript(SCHEMA)
         for migration in MIGRATIONS:
@@ -80,8 +80,27 @@ def init():
                 con.execute(migration)
                 con.commit()
             except sqlite3.OperationalError:
-                pass  # stĺpec už existuje — OK
+                pass
 
+    # Jednorazové čistenie starých záznamov bez area_m2
+    _cleanup_legacy_sources()
+
+def _cleanup_legacy_sources():
+    """Zmaž staré Sreality záznamy uložené pred fixom area_m2 parsingu.
+    Zdroje 'sreality_byty' a 'sreality_domy' majú area_m2=0 u všetkých —
+    sú nepoužiteľné pre Deal Score.
+    """
+    legacy = ("sreality_byty", "sreality_domy")
+    with _conn() as con:
+        for source in legacy:
+            count = con.execute(
+                "SELECT COUNT(*) FROM listings WHERE source = ?", (source,)
+            ).fetchone()[0]
+            if count > 0:
+                con.execute("DELETE FROM listings WHERE source = ?", (source,))
+                con.execute("DELETE FROM seen_ids WHERE source = ?", (source,))
+                con.execute("DELETE FROM free_sent WHERE source = ?", (source,))
+                print(f"[db] Cleanup: zmazaných {count} legacy záznamov ({source})")
 
 # ── Listings ──────────────────────────────────────────────────
 

@@ -37,10 +37,9 @@ def run_once() -> dict:
         listings = scraper.fetch()
         stats["scraped"] += len(listings)
 
-        new_listings = filters.apply(listings)  # už obsahuje is_relevant()
+        new_listings = filters.apply(listings)
         stats["new"] += len(new_listings)
 
-        # Ohodnoť všetky nové
         scored = []
         for listing in new_listings:
             db.save_listing(listing)
@@ -49,7 +48,6 @@ def run_once() -> dict:
             if deal_score.is_deal(sc):
                 scored.append((listing, sc))
 
-        # Pošli len top N, bez outlierov
         for listing, sc in filters.top_deals(scored):
             stats["deals"] += 1
             for output in OUTPUTS:
