@@ -1,52 +1,70 @@
 # storage/db.py — jediné miesto kde sa dotýkame databázy
 #
 # Tabuľky:
-#   listings   — každý inzerát čo sme kedy videli
-#   seen_ids   — rýchla množina pre is_new() check
-#   free_sent  — inzeráty ktoré už boli poslané do Free kanála
+#   listings      — každý inzerát čo sme kedy videli
+#   seen_ids      — rýchla množina pre is_new() check
+#   free_sent     — inzeráty ktoré už boli poslané do Free kanála
+#   price_history — história cien inzerátov
 
-import sqlite3
+import os
 from contextlib import contextmanager
 from datetime import datetime
 
-import config
+import psycopg2
+import psycopg2.extras
+import psycopg2.errors
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 # ── Schéma ────────────────────────────────────────────────────
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS listings (
-    id          TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    title       TEXT,
-    price       INTEGER DEFAULT 0,
-    area_m2     INTEGER DEFAULT 0,
-    locality    TEXT,
-    district    TEXT DEFAULT "",
-    rooms       INTEGER DEFAULT 0,
-    hash        TEXT DEFAULT "",
-    url         TEXT,
-    scraped_at  TEXT,
-    PRIMARY KEY (id, source)
-);
-
-CREATE TABLE IF NOT EXISTS seen_ids (
-    id          TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    first_seen  TEXT NOT NULL,
-    PRIMARY KEY (id, source)
-);
-
-CREATE TABLE IF NOT EXISTS free_sent (
-    id          TEXT NOT NULL,
-    source      TEXT NOT NULL,
-    sent_at     TEXT NOT NULL,
-    PRIMARY KEY (id, source)
-);
-
-CREATE INDEX IF NOT EXISTS idx_listings_locality
-    ON listings(locality, source);
-"""
+_SCHEMA_STATEMENTS = [
+    """
+    CREATE TABLE IF NOT EXISTS listings (
+        id          TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        title       TEXT,
+        price       INTEGER DEFAULT 0,
+        area_m2     INTEGER DEFAULT 0,
+        locality    TEXT,
+        district    TEXT DEFAULT '',
+        rooms       INTEGER DEFAULT 0,
+        hash        TEXT DEFAULT '',
+        url         TEXT,
+        scraped_at  TEXT,
+        PRIMARY KEY (id, source)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS seen_ids (
+        id          TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        first_seen  TEXT NOT NULL,
+        PRIMARY KEY (id, source)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS free_sent (
+        id          TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        sent_at     TEXT NOT NULL,
+        PRIMARY KEY (id, source)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS price_history (
+        id          TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        price       INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_listings_locality
+        ON listings(locality, source)
+    """,
+]
 
 # Migrácie — každá sa pokúsi raz, pri chybe (stĺpec už existuje) ticho preskočí
 MIGRATIONS = [
@@ -60,13 +78,49 @@ MIGRATIONS = [
 
 @contextmanager
 def _conn():
-    con = sqlite3.connect(config.DB_PATH)
-    con.row_factory = sqlite3.Row
+    con = psycopg2.connect(DATABASE_URL)
     try:
         yield con
         con.commit()
+    except Exception:
+        con.rollback()
+        raise
     finally:
         con.close()
+
+
+# ── Internal helpers ──────────────────────────────────────────
+
+def _execute(con, query: str, params: tuple = ()) -> None:
+    with con.cursor() as cur:
+        cur.execute(query, params)
+
+
+def _executemany(con, query: str, params_list) -> None:
+    with con.cursor() as cur:
+        cur.executemany(query, params_list)
+
+
+def _fetchall(con, query: str, params: tuple = ()) -> list[dict]:
+    with con.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(query, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
+def _fetchone(con, query: str, params: tuple = ()):
+    """Returns first row as dict, or None."""
+    with con.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute(query, params)
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def _fetchscalar(con, query: str, params: tuple = ()):
+    """Returns first column of first row (for COUNT queries etc.)."""
+    with con.cursor() as cur:
+        cur.execute(query, params)
+        row = cur.fetchone()
+        return row[0] if row else None
 
 
 # ── Init ──────────────────────────────────────────────────────
@@ -74,16 +128,20 @@ def _conn():
 def init():
     """Vytvor tabuľky ak neexistujú + spusti migrácie."""
     with _conn() as con:
-        con.executescript(SCHEMA)
+        for stmt in _SCHEMA_STATEMENTS:
+            _execute(con, stmt)
+
         for migration in MIGRATIONS:
             try:
-                con.execute(migration)
-                con.commit()
-            except sqlite3.OperationalError:
-                pass
+                _execute(con, migration)
+            except psycopg2.errors.DuplicateColumn:
+                con.rollback()
+            except Exception:
+                con.rollback()
 
     # Jednorazové čistenie starých záznamov bez area_m2
     _cleanup_legacy_sources()
+
 
 def _cleanup_legacy_sources():
     """Zmaž staré Sreality záznamy uložené pred fixom area_m2 parsingu.
@@ -93,26 +151,28 @@ def _cleanup_legacy_sources():
     legacy = ("sreality_byty", "sreality_domy")
     with _conn() as con:
         for source in legacy:
-            count = con.execute(
-                "SELECT COUNT(*) FROM listings WHERE source = ?", (source,)
-            ).fetchone()[0]
-            if count > 0:
-                con.execute("DELETE FROM listings WHERE source = ?", (source,))
-                con.execute("DELETE FROM seen_ids WHERE source = ?", (source,))
-                con.execute("DELETE FROM free_sent WHERE source = ?", (source,))
+            count = _fetchscalar(con, "SELECT COUNT(*) FROM listings WHERE source = %s", (source,))
+            if count and count > 0:
+                _execute(con, "DELETE FROM listings  WHERE source = %s", (source,))
+                _execute(con, "DELETE FROM seen_ids  WHERE source = %s", (source,))
+                _execute(con, "DELETE FROM free_sent WHERE source = %s", (source,))
                 print(f"[db] Cleanup: zmazaných {count} legacy záznamov ({source})")
+
 
 # ── Listings ──────────────────────────────────────────────────
 
 def save_listing(listing: dict) -> None:
     """Ulož inzerát. Ak už existuje (id + source), ignoruj."""
     with _conn() as con:
-        con.execute(
+        _execute(
+            con,
             """
-            INSERT OR IGNORE INTO listings
+            INSERT INTO listings
                 (id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at)
             VALUES
-                (:id, :source, :title, :price, :area_m2, :locality, :district, :rooms, :hash, :url, :scraped_at)
+                (%(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
+                 %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s)
+            ON CONFLICT (id, source) DO NOTHING
             """,
             listing,
         )
@@ -122,16 +182,17 @@ def get_listings_by_locality(locality: str, source: str | None = None) -> list[d
     """Vráti inzeráty pre danú lokalitu (pre výpočet priemeru)."""
     with _conn() as con:
         if source:
-            rows = con.execute(
-                "SELECT * FROM listings WHERE locality = ? AND source = ? AND price > 0",
+            return _fetchall(
+                con,
+                "SELECT * FROM listings WHERE locality = %s AND source = %s AND price > 0",
                 (locality, source),
-            ).fetchall()
+            )
         else:
-            rows = con.execute(
-                "SELECT * FROM listings WHERE locality = ? AND price > 0",
+            return _fetchall(
+                con,
+                "SELECT * FROM listings WHERE locality = %s AND price > 0",
                 (locality,),
-            ).fetchall()
-    return [dict(r) for r in rows]
+            )
 
 
 # ── Seen IDs ──────────────────────────────────────────────────
@@ -139,18 +200,20 @@ def get_listings_by_locality(locality: str, source: str | None = None) -> list[d
 def is_new(listing_id: str, source: str) -> bool:
     """True ak tento inzerát sme ešte nevideli."""
     with _conn() as con:
-        row = con.execute(
-            "SELECT 1 FROM seen_ids WHERE id = ? AND source = ?",
+        row = _fetchone(
+            con,
+            "SELECT 1 FROM seen_ids WHERE id = %s AND source = %s",
             (listing_id, source),
-        ).fetchone()
+        )
     return row is None
 
 
 def mark_seen(listing_id: str, source: str) -> None:
     """Označ inzerát ako videný."""
     with _conn() as con:
-        con.execute(
-            "INSERT OR IGNORE INTO seen_ids (id, source, first_seen) VALUES (?, ?, ?)",
+        _execute(
+            con,
+            "INSERT INTO seen_ids (id, source, first_seen) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             (listing_id, source, datetime.now().isoformat()),
         )
 
@@ -163,12 +226,14 @@ def bootstrap_seen(listings: list[dict]) -> None:
     """
     now = datetime.now().isoformat()
     with _conn() as con:
-        con.executemany(
-            "INSERT OR IGNORE INTO seen_ids (id, source, first_seen) VALUES (?, ?, ?)",
+        _executemany(
+            con,
+            "INSERT INTO seen_ids (id, source, first_seen) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             [(l["id"], l["source"], now) for l in listings],
         )
-        con.executemany(
-            "INSERT OR IGNORE INTO free_sent (id, source, sent_at) VALUES (?, ?, ?)",
+        _executemany(
+            con,
+            "INSERT INTO free_sent (id, source, sent_at) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             [(l["id"], l["source"], now) for l in listings],
         )
 
@@ -181,26 +246,27 @@ def get_pending_free_alerts(delay_hours: int = 24) -> list[dict]:
     - ešte neboli poslané do Free kanála
     """
     with _conn() as con:
-        rows = con.execute(
+        return _fetchall(
+            con,
             """
             SELECT l.*, s.first_seen
             FROM listings l
             JOIN seen_ids s ON l.id = s.id AND l.source = s.source
             LEFT JOIN free_sent f ON l.id = f.id AND l.source = f.source
             WHERE f.id IS NULL
-              AND datetime(s.first_seen) <= datetime('now', ? || ' hours')
+              AND s.first_seen::timestamp <= NOW() - (%s * INTERVAL '1 hour')
             ORDER BY s.first_seen ASC
             """,
-            (f"-{delay_hours}",),
-        ).fetchall()
-    return [dict(r) for r in rows]
+            (delay_hours,),
+        )
 
 
 def mark_free_sent(listing_id: str, source: str) -> None:
     """Označ inzerát ako odoslaný do Free kanála."""
     with _conn() as con:
-        con.execute(
-            "INSERT OR IGNORE INTO free_sent (id, source, sent_at) VALUES (?, ?, ?)",
+        _execute(
+            con,
+            "INSERT INTO free_sent (id, source, sent_at) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
             (listing_id, source, datetime.now().isoformat()),
         )
 
@@ -222,46 +288,47 @@ def get_free_sent_today_count() -> int:
 def stats() -> dict:
     """Základné štatistiky — užitočné pri debugovaní."""
     with _conn() as con:
-        total    = con.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
-        seen     = con.execute("SELECT COUNT(*) FROM seen_ids").fetchone()[0]
-        free_out = con.execute("SELECT COUNT(*) FROM free_sent").fetchone()[0]
-        sources  = con.execute(
-            "SELECT source, COUNT(*) as n FROM listings GROUP BY source"
-        ).fetchall()
+        total    = _fetchscalar(con, "SELECT COUNT(*) FROM listings")
+        seen     = _fetchscalar(con, "SELECT COUNT(*) FROM seen_ids")
+        free_out = _fetchscalar(con, "SELECT COUNT(*) FROM free_sent")
+        sources  = _fetchall(con, "SELECT source, COUNT(*) as n FROM listings GROUP BY source")
     return {
-        "total_listings": total,
-        "total_seen":     seen,
-        "free_sent":      free_out,
+        "total_listings": total or 0,
+        "total_seen":     seen or 0,
+        "free_sent":      free_out or 0,
         "by_source":      {r["source"]: r["n"] for r in sources},
     }
 
 
-# ── Weekly Stats ─────────────────────────────────────────────────────
+# ── Weekly Stats ──────────────────────────────────────────────
 
 def get_weekly_deals() -> list[dict]:
     """Vráti inzeráty z posledných 7 dní kde deal_score >= 10%."""
     with _conn() as con:
-        rows = con.execute("""
+        rows = _fetchall(
+            con,
+            """
             SELECT l.source, l.title, l.price, l.area_m2, l.locality, l.url, l.district, l.rooms
             FROM listings l
             JOIN seen_ids s ON l.id = s.id AND l.source = s.source
-            WHERE datetime(s.first_seen) >= datetime('now', '-7 days')
+            WHERE s.first_seen::timestamp >= NOW() - INTERVAL '7 days'
               AND l.price > 0
               AND l.area_m2 > 0
             ORDER BY s.first_seen DESC
-        """).fetchall()
+            """,
+        )
 
     deals = []
     for row in rows:
         listing = {
-            "source":   row[0],
-            "title":    row[1],
-            "price":    row[2],
-            "area_m2":  row[3],
-            "locality": row[4],
-            "url":      row[5],
-            "district": row[6],
-            "rooms":    row[7],
+            "source":   row["source"],
+            "title":    row["title"],
+            "price":    row["price"],
+            "area_m2":  row["area_m2"],
+            "locality": row["locality"],
+            "url":      row["url"],
+            "district": row["district"],
+            "rooms":    row["rooms"],
         }
         try:
             from processing import deal_score as ds

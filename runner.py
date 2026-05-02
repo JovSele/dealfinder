@@ -24,10 +24,11 @@ SCRAPERS = [
 ]
 
 
-
 OUTPUTS = [
     telegram,
 ]
+
+LOOP_INTERVAL_SEC = 20 * 60  # 20 minút
 
 
 def run_once() -> dict:
@@ -119,10 +120,10 @@ def main() -> None:
 
     if "--weekly" in sys.argv:
         log("Režim: --weekly summary")
-                
+
         deals = db.get_weekly_deals()
         telegram.send_weekly_free_summary(deals)
-        
+
         count = len(deals)
         if count:
             log(f"Weekly summary odoslaný — {count} dealy tento týždeň")
@@ -132,7 +133,7 @@ def main() -> None:
             telegram.send_admin("📊 *Weekly summary preskočený* — 0 dealy tento týždeň")
         return
 
-    # GitHub Actions / jednorazové spustenie
+    # Jednorazové spustenie
     if "--once" in sys.argv:
         log("Režim: --once")
 
@@ -160,35 +161,52 @@ def main() -> None:
 
         return
 
-    # Normálny režim — nekonečná slučka
-    log(f"  Interval: {config.SCRAPE_INTERVAL_SEC}s")
-    log(f"  DB: {config.DB_PATH}")
-    log("=" * 50)
+    # Nekonečná slučka — každých 20 minút
+    if "--loop" in sys.argv:
+        log(f"Režim: --loop (každých {LOOP_INTERVAL_SEC // 60} minút)")
+        log("=" * 50)
 
-    bootstrap()
+        if db.stats()["total_seen"] == 0:
+            log("Prázdna DB — spúšťam bootstrap")
+            bootstrap()
+        else:
+            log("DB existuje — bootstrap preskakujem")
 
-    cycle = 0
-    while True:
-        cycle += 1
-        log(f"--- Cyklus #{cycle} ---")
-        stats = run_once()
-        free_sent = send_pending_free_alerts()
-        log(
-            f"Stiahnuté: {stats['scraped']} | "
-            f"Nové: {stats['new']} | "
-            f"Dealy: {stats['deals']} | "
-            f"Alerty: {stats['alerted']} | "
-            f"Free: {free_sent}"
-        )
-        log(f"DB celkom: {db.stats()['total_listings']} inzerátov")
-        log(f"Ďalší cyklus o {config.SCRAPE_INTERVAL_SEC // 60} min...\n")
-        time.sleep(config.SCRAPE_INTERVAL_SEC)
+        cycle = 0
+        while True:
+            cycle += 1
+            log(f"--- Cyklus #{cycle} ---")
+            try:
+                stats = run_once()
+                free_sent = send_pending_free_alerts()
+                log(
+                    f"Stiahnuté: {stats['scraped']} | "
+                    f"Nové: {stats['new']} | "
+                    f"Dealy: {stats['deals']} | "
+                    f"Alerty: {stats['alerted']} | "
+                    f"Free: {free_sent}"
+                )
+                log(f"DB celkom: {db.stats()['total_listings']} inzerátov")
+            except Exception as e:
+                import traceback
+                err = traceback.format_exc()
+                log(f"CHYBA v cykle #{cycle}: {err}")
+                telegram.send_admin(f"🔴 *DealFinder CHYBA* (cyklus #{cycle})\n```\n{err[:300]}\n```")
+
+            log(f"Ďalší cyklus o {LOOP_INTERVAL_SEC // 60} min...\n")
+            time.sleep(LOOP_INTERVAL_SEC)
+
+        return
+
+    log("Použi --once alebo --loop")
+    log("  --once   jednorazové spustenie")
+    log("  --loop   nekonečná slučka každých 20 minút")
+    log("  --weekly týždenný súhrn")
 
 
 def log(msg: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"[{ts}] [runner] {msg}")
-
 
 
 if __name__ == "__main__":
