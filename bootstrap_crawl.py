@@ -143,6 +143,7 @@ def crawl_source(cfg):
                 "locality": city,
                 "district": locality,
                 "rooms": rooms,
+                "hash": hash_id,
             }
 
             if db.is_new(listing["id"], listing["source"]):
