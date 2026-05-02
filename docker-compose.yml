@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: dealfinder
+      POSTGRES_USER: dealfinder
+      POSTGRES_PASSWORD: dealfinder123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  scraper:
+    build: .
+    restart: always
+    depends_on:
+      - postgres
+    env_file: .env
+    command: python -u runner.py --loop
+
+  bot:
+    build: .
+    restart: always
+    depends_on:
+      - postgres
+    env_file: .env
+    command: python bot.py
+
+volumes:
+  postgres_data:
