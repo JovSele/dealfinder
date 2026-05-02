@@ -56,6 +56,7 @@ def run_once() -> dict:
 
     return stats
 
+FREE_ALERTS_PER_DAY = 3
 
 def send_pending_free_alerts() -> int:
     pending = db.get_pending_free_alerts(delay_hours=config.FREE_DELAY_HOURS)
