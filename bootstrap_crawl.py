@@ -8,6 +8,7 @@ import time
 import requests
 import sys
 import os
+from datetime import datetime, timezone
 
 sys.path.insert(0, '/app')
 os.chdir('/app')
@@ -144,6 +145,7 @@ def crawl_source(cfg):
                 "district": locality,
                 "rooms": rooms,
                 "hash": hash_id,
+                "scraped_at": datetime.now(timezone.utc).isoformat(),
             }
 
             if db.is_new(listing["id"], listing["source"]):
