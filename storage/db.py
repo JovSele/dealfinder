@@ -204,6 +204,18 @@ def mark_free_sent(listing_id: str, source: str) -> None:
             (listing_id, source, datetime.now().isoformat()),
         )
 
+# ── Free today count ──────────────────────────────────────────
+
+def get_free_sent_today_count() -> int:
+    """Koľko free alertov sme dnes už poslali."""
+    with _conn() as con:
+        row = con.execute(
+            """
+            SELECT COUNT(*) FROM free_sent
+            WHERE date(sent_at) = date('now')
+            """,
+        ).fetchone()
+    return row[0] if row else 0
 
 # ── Stats ─────────────────────────────────────────────────────
 
