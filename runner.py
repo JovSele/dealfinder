@@ -57,8 +57,6 @@ def run_once() -> dict:
     return stats
 
 
-FREE_ALERTS_PER_DAY = 3
-
 def send_pending_free_alerts() -> int:
     pending = db.get_pending_free_alerts(delay_hours=config.FREE_DELAY_HOURS)
     if not pending:
@@ -66,33 +64,37 @@ def send_pending_free_alerts() -> int:
 
     from processing import deal_score as ds
 
-    # Zozbieraj dealy, označ všetky ako odoslané
+    already_sent_today = db.get_free_sent_today_count()
+    remaining = max(0, FREE_ALERTS_PER_DAY - already_sent_today)
+
     deals_only = []
+    to_skip = []
+
     for listing in pending:
         try:
             sc = ds.score(listing)
-            if ds.is_deal(sc):
+            if ds.is_deal(sc) and len(deals_only) < remaining:
                 listing["_score"] = sc
                 deals_only.append(listing)
+            else:
+                to_skip.append(listing)
         except Exception:
-            pass
+            to_skip.append(listing)
+
+    # Označ non-dealy a prebytočné dealy ako spracované (bez odoslania)
+    for listing in to_skip:
         db.mark_free_sent(listing["id"], listing["source"])
 
-    # Koľko sme dnes už poslali?
-    already_sent_today = db.get_free_sent_today_count()
-    remaining = max(0, FREE_ALERTS_PER_DAY - already_sent_today)
-    to_send = deals_only[:remaining]
-
-    log(f"Free kanál: {len(deals_only)} dealy, dnes už {already_sent_today}/3, posielam {len(to_send)}")
+    log(f"Free kanál: dnes už {already_sent_today}/3, posielam {len(deals_only)}")
 
     sent = 0
-    for listing in to_send:
+    for listing in deals_only:
         sc = listing.pop("_score", None)
         telegram.send_free_alert(listing, sc)
+        db.mark_free_sent(listing["id"], listing["source"])
         sent += 1
 
     return sent
-
 
 def bootstrap() -> None:
     log("Bootstrap: načítavam existujúce inzeráty...")
