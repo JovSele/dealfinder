@@ -131,15 +131,13 @@ def init():
         for stmt in _SCHEMA_STATEMENTS:
             _execute(con, stmt)
 
-        for migration in MIGRATIONS:
-            try:
+    for migration in MIGRATIONS:
+        try:
+            with _conn() as con:
                 _execute(con, migration)
-            except psycopg2.errors.DuplicateColumn:
-                con.rollback()
-            except Exception:
-                con.rollback()
+        except Exception:
+            pass  # stĺpec už existuje — ignoruj
 
-    # Jednorazové čistenie starých záznamov bez area_m2
     _cleanup_legacy_sources()
 
 
