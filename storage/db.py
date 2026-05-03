@@ -144,20 +144,18 @@ def init():
 
 
 def _cleanup_legacy_sources():
-    """Zmaž staré Sreality záznamy uložené pred fixom area_m2 parsingu.
-    Zdroje 'sreality_byty' a 'sreality_domy' majú area_m2=0 u všetkých —
-    sú nepoužiteľné pre Deal Score.
-    """
     legacy = ("sreality_byty", "sreality_domy")
-    with _conn() as con:
-        for source in legacy:
-            count = _fetchscalar(con, "SELECT COUNT(*) FROM listings WHERE source = %s", (source,))
-            if count and count > 0:
-                _execute(con, "DELETE FROM listings  WHERE source = %s", (source,))
-                _execute(con, "DELETE FROM seen_ids  WHERE source = %s", (source,))
-                _execute(con, "DELETE FROM free_sent WHERE source = %s", (source,))
-                print(f"[db] Cleanup: zmazaných {count} legacy záznamov ({source})")
-
+    try:
+        with _conn() as con:
+            for source in legacy:
+                count = _fetchscalar(con, "SELECT COUNT(*) FROM listings WHERE source = %s", (source,))
+                if count and count > 0:
+                    _execute(con, "DELETE FROM listings  WHERE source = %s", (source,))
+                    _execute(con, "DELETE FROM seen_ids  WHERE source = %s", (source,))
+                    _execute(con, "DELETE FROM free_sent WHERE source = %s", (source,))
+                    print(f"[db] Cleanup: zmazaných {count} legacy záznamov ({source})")
+    except Exception:
+        pass  # tabuľky ešte neexistujú — ignoruj
 
 # ── Listings ──────────────────────────────────────────────────
 
