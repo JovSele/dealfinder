@@ -187,6 +187,7 @@ def main() -> None:
                     f"Free: {free_sent}"
                 )
                 log(f"DB celkom: {db.stats()['total_listings']} inzerátov")
+                telegram.send_run_summary(stats, free_sent)
             except Exception as e:
                 import traceback
                 err = traceback.format_exc()
