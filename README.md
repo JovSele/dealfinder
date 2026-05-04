@@ -9,3 +9,5 @@ pushnut
 
 # 3. Spusti
 python runner.py --once
+
+git pull
