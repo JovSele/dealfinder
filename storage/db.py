@@ -229,12 +229,11 @@ def _cleanup_legacy_sources():
 
 # ── Listings ──────────────────────────────────────────────────
 
+# OPRAV TOTO — použi RETURNING aby si vedel či bol INSERT skutočný:
 def save_listing(listing: dict) -> None:
-    """Ulož inzerát. Ak už existuje (id + source), ignoruj.
-    Vždy ulož cenu do price_history."""
     now = datetime.now().isoformat()
     with _conn() as con:
-        _execute(
+        result = _fetchone(
             con,
             """
             INSERT INTO listings (
@@ -247,6 +246,7 @@ def save_listing(listing: dict) -> None:
                 %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE
             )
             ON CONFLICT (id, source) DO NOTHING
+            RETURNING id
             """,
             {
                 "is_auction":   listing.get("is_auction", False),
@@ -257,15 +257,13 @@ def save_listing(listing: dict) -> None:
                 **listing,
             },
         )
-        # price_history — vždy zaznamenej
-        _execute(
-            con,
-            """
-            INSERT INTO price_history (id, source, price, recorded_at)
-            VALUES (%s, %s, %s, %s)
-            """,
-            (listing["id"], listing["source"], listing["price"], now),
-        )
+        # price_history — len ak bol listing skutočne nový
+        if result:
+            _execute(
+                con,
+                "INSERT INTO price_history (id, source, price, recorded_at) VALUES (%s, %s, %s, %s)",
+                (listing["id"], listing["source"], listing["price"], now),
+            )
 
 
 def get_listings_by_locality(locality: str, source: str | None = None) -> list[dict]:
@@ -365,13 +363,10 @@ def mark_free_sent(listing_id: str, source: str) -> None:
 def get_free_sent_today_count() -> int:
     """Koľko free alertov sme dnes už poslali."""
     with _conn() as con:
-        row = con.execute(
-            """
-            SELECT COUNT(*) FROM free_sent
-            WHERE date(sent_at) = date('now')
-            """,
-        ).fetchone()
-    return row[0] if row else 0
+        return _fetchscalar(
+            con,
+            "SELECT COUNT(*) FROM free_sent WHERE sent_at::date = CURRENT_DATE",
+        ) or 0
 
 # ── Stats ─────────────────────────────────────────────────────
 
