@@ -4,16 +4,13 @@ import time
 from datetime import datetime
 
 import config
-from scrapers.bazos import BazosScraper
 from processing import filters, deal_score
 from storage import db
 from outputs import telegram
 from scrapers.sreality import SrealityScraper
 
 SCRAPERS = [
-    # --- Slovak market ---
-    *[BazosScraper(url) for url in config.BAZOS_SEARCH_URLS],
-
+   
     # --- Czech market ---
     SrealityScraper(source="sreality/byty", category_main_cb=1, category_type_cb=1, region_id=11),
     SrealityScraper(source="sreality/domy", category_main_cb=2, category_type_cb=1, region_id=11),
