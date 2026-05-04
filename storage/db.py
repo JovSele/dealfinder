@@ -22,17 +22,35 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 _SCHEMA_STATEMENTS = [
     """
     CREATE TABLE IF NOT EXISTS listings (
-        id          TEXT NOT NULL,
-        source      TEXT NOT NULL,
-        title       TEXT,
-        price       INTEGER DEFAULT 0,
-        area_m2     INTEGER DEFAULT 0,
-        locality    TEXT,
-        district    TEXT DEFAULT '',
-        rooms       INTEGER DEFAULT 0,
-        hash        TEXT DEFAULT '',
-        url         TEXT,
-        scraped_at  TEXT,
+        id              TEXT NOT NULL,
+        source          TEXT NOT NULL,
+        title           TEXT,
+        price           INTEGER DEFAULT 0,
+        area_m2         INTEGER DEFAULT 0,
+        locality        TEXT,
+        district        TEXT DEFAULT '',
+        rooms           TEXT DEFAULT '',
+        hash            TEXT DEFAULT '',
+        url             TEXT,
+        scraped_at      TEXT,
+        -- nové stĺpce
+        floor           INTEGER DEFAULT NULL,
+        floor_total     INTEGER DEFAULT NULL,
+        building_type   TEXT DEFAULT NULL,
+        condition       TEXT DEFAULT NULL,
+        energy_class    TEXT DEFAULT NULL,
+        has_elevator    BOOLEAN DEFAULT NULL,
+        has_balcony     BOOLEAN DEFAULT NULL,
+        has_parking     BOOLEAN DEFAULT NULL,
+        has_terrace     BOOLEAN DEFAULT NULL,
+        ownership_type  TEXT DEFAULT NULL,
+        is_auction      BOOLEAN DEFAULT FALSE,
+        new_building    BOOLEAN DEFAULT FALSE,
+        owner_direct    BOOLEAN DEFAULT NULL,
+        gps_lat         REAL DEFAULT NULL,
+        gps_lon         REAL DEFAULT NULL,
+        price_first_seen INTEGER DEFAULT NULL,
+        enriched        BOOLEAN DEFAULT FALSE,
         PRIMARY KEY (id, source)
     )
     """,
@@ -71,6 +89,23 @@ MIGRATIONS = [
     "ALTER TABLE listings ADD COLUMN district TEXT DEFAULT ''",
     "ALTER TABLE listings ADD COLUMN rooms    TEXT DEFAULT ''",
     "ALTER TABLE listings ADD COLUMN hash     TEXT DEFAULT ''",
+    "ALTER TABLE listings ADD COLUMN floor          INTEGER DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN floor_total    INTEGER DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN building_type  TEXT DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN condition       TEXT DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN energy_class   TEXT DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN has_elevator   BOOLEAN DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN has_balcony    BOOLEAN DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN has_parking    BOOLEAN DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN has_terrace    BOOLEAN DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN ownership_type TEXT DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN is_auction     BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE listings ADD COLUMN new_building   BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE listings ADD COLUMN owner_direct   BOOLEAN DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN gps_lat        REAL DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN gps_lon        REAL DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN price_first_seen INTEGER DEFAULT NULL",
+    "ALTER TABLE listings ADD COLUMN enriched       BOOLEAN DEFAULT FALSE",
 ]
 
 
@@ -122,6 +157,43 @@ def _fetchscalar(con, query: str, params: tuple = ()):
         row = cur.fetchone()
         return row[0] if row else None
 
+def update_enrichment(listing_id: str, source: str, data: dict) -> None:
+    """Aktualizuj stĺpce z detail endpointu."""
+    with _conn() as con:
+        _execute(
+            con,
+            """
+            UPDATE listings SET
+                floor          = %(floor)s,
+                floor_total    = %(floor_total)s,
+                building_type  = %(building_type)s,
+                condition      = %(condition)s,
+                energy_class   = %(energy_class)s,
+                has_elevator   = %(has_elevator)s,
+                has_balcony    = %(has_balcony)s,
+                has_parking    = %(has_parking)s,
+                has_terrace    = %(has_terrace)s,
+                ownership_type = %(ownership_type)s,
+                enriched       = TRUE
+            WHERE id = %(id)s AND source = %(source)s
+            """,
+            {**data, "id": listing_id, "source": source},
+        )
+
+def get_unenriched(limit: int = 50) -> list[dict]:
+    """Vráti listingy ktoré ešte nemajú detail dáta."""
+    with _conn() as con:
+        return _fetchall(
+            con,
+            """
+            SELECT id, source FROM listings
+            WHERE enriched = FALSE AND source LIKE 'sreality%'
+            ORDER BY scraped_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+
 
 # ── Init ──────────────────────────────────────────────────────
 
@@ -158,19 +230,41 @@ def _cleanup_legacy_sources():
 # ── Listings ──────────────────────────────────────────────────
 
 def save_listing(listing: dict) -> None:
-    """Ulož inzerát. Ak už existuje (id + source), ignoruj."""
+    """Ulož inzerát. Ak už existuje (id + source), ignoruj.
+    Vždy ulož cenu do price_history."""
+    now = datetime.now().isoformat()
     with _conn() as con:
         _execute(
             con,
             """
-            INSERT INTO listings
-                (id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at)
-            VALUES
-                (%(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
-                 %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s)
+            INSERT INTO listings (
+                id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at,
+                is_auction, new_building, owner_direct, gps_lat, gps_lon, price_first_seen, enriched
+            ) VALUES (
+                %(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
+                %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s,
+                %(is_auction)s, %(new_building)s, %(owner_direct)s,
+                %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE
+            )
             ON CONFLICT (id, source) DO NOTHING
             """,
-            listing,
+            {
+                "is_auction":   listing.get("is_auction", False),
+                "new_building": listing.get("new_building", False),
+                "owner_direct": listing.get("owner_direct"),
+                "gps_lat":      listing.get("gps_lat"),
+                "gps_lon":      listing.get("gps_lon"),
+                **listing,
+            },
+        )
+        # price_history — vždy zaznamenej
+        _execute(
+            con,
+            """
+            INSERT INTO price_history (id, source, price, recorded_at)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (listing["id"], listing["source"], listing["price"], now),
         )
 
 
