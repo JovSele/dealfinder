@@ -96,39 +96,48 @@ class SrealityScraper(BaseScraper):
             hash_id = str(estate.get("hash_id", ""))
             if not hash_id:
                 return None
-
+    
             title    = estate.get("name", "").strip()
             price    = int(estate.get("price", 0))
             locality = estate.get("locality", "").strip()
-
-            # ── FIX 1: area_m2 z title ────────────────────────
-            # Sreality API nevracia plochu ako samostatné pole,
-            # ale je vždy v title: "Prodej bytu 3+kk 76 m²"
-            area_m2 = self._parse_area(title)
-
-            # ── FIX 2: locality → mesto ────────────────────────
-            # API vracia "Ulica, Mesto" alebo "Obec, okres Okres"
-            # Chceme len mesto pre správny median výpočet
-            city = self._normalize_locality(locality)
-
-            # ── FIX 3: rooms z title ──────────────────────────
-            rooms = self._parse_rooms(title)
-
+            area_m2  = self._parse_area(title)
+            city     = self._normalize_locality(locality)
+            rooms    = self._parse_rooms(title)
+    
+            # --- NOVÉ: polia dostupné v list endpointe ---
+            gps      = estate.get("gps", {})
+            gps_lat  = gps.get("lat") if gps else None
+            gps_lon  = gps.get("lon") if gps else None
+    
+            is_auction   = bool(estate.get("is_auction", False))
+            new_building = bool(estate.get("new_building", False))
+    
+            # owner_direct: ak broker nie je professional → majiteľ priamo
+            # Toto pole je v list endpointe ako "exclusively_at_rk"
+            # False = nie exkluzívne RK = väčšia šanca owner direct
+            exclusively_rk = bool(estate.get("exclusively_at_rk", True))
+            owner_direct   = not exclusively_rk  # aproximácia, detail endpoint upresní
+    
             url = (
                 f"https://www.sreality.cz/detail/"
                 f"{self._type_slug()}/{self._category_slug()}/"
                 f"-/-/{hash_id}"
             )
-
+    
             return self._make_listing(
                 id=f"sreality_{hash_id}",
                 title=title,
                 url=url,
                 price=price,
                 area_m2=area_m2,
-                locality=city,          # ← normalizované mesto
-                district=locality,      # ← pôvodná surová hodnota pre referenciu
+                locality=city,
+                district=locality,
                 rooms=rooms,
+                gps_lat=gps_lat,
+                gps_lon=gps_lon,
+                is_auction=is_auction,
+                new_building=new_building,
+                owner_direct=owner_direct,
             )
         except Exception as e:
             self._log(f"Parse chyba: {e}")
