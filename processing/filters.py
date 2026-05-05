@@ -84,9 +84,9 @@ def apply(listings: list[dict]) -> list[dict]:
     """Vyfiltruj zoznam inzerátov — vráť len platné a nové.
 
     Pipelina:
-        1. is_valid()    — odmietni garbage
+        1. is_valid()    — odmietni garbage (chýba id/url/title, podozrivo nízka cena)
         2. is_new()      — odmietni duplicity
-        3. is_relevant() — odmietni chaty/chalupy
+        3. is_relevant() — odmietni chaty/chalupy + junk (dražby, podiely, mobilheimy...)
     """
     valid = [l for l in listings if is_valid(l)]
     invalid = len(listings) - len(valid)
@@ -101,7 +101,7 @@ def apply(listings: list[dict]) -> list[dict]:
     relevant = [l for l in new if is_relevant(l)]
     irrelevant = len(new) - len(relevant)
     if irrelevant:
-        _log(f"Vylúčených {irrelevant} nerelevantných typov (chaty/chalupy)")
+        _log(f"Vylúčených {irrelevant} junk inzerátov (chaty/dražby/podiely/mobilheimy)")
 
     return relevant
 
