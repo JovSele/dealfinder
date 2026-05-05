@@ -1,0 +1,11 @@
+[Unit]
+Description=DealFinder Webhook
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/dealfinder
+ExecStart=/usr/bin/python3 /opt/dealfinder/webhook.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
