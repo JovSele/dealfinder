@@ -189,7 +189,7 @@ def main() -> None:
                 import traceback
                 err = traceback.format_exc()
                 log(f"CHYBA v cykle #{cycle}: {err}")
-                telegram.send_admin(f"🔴 *DealFinder CHYBA* (cyklus #{cycle})\n```\n{err[:1000]}\n```")
+                telegram.send_admin(f"🔴 *DealFinder CHYBA* (cyklus #{cycle})\n```\n{err[:1500]}\n```")
 
             log(f"Ďalší cyklus o {LOOP_INTERVAL_SEC // 60} min...\n")
             time.sleep(LOOP_INTERVAL_SEC)
