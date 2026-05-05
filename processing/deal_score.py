@@ -99,13 +99,6 @@ def _get_comparables(locality, district, source, category="", listing_per_m2=0):
 
 
 def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0) -> list:
-    """Stiahni comparables — filtruj podľa lokality, zdroja, kategórie a cenového pásma.
-
-    Price range filter:
-        Vylúči inzeráty ktoré sú viac ako 2.5x drahšie alebo lacnejšie ako inzerát.
-        Zabraňuje porovnávaniu novostaviek (130k Kč/m²) so starými bytmi (40k Kč/m²).
-        Príklad: inzerát 40 000 Kč/m² → comparables musia byť v pásme 16 000–100 000 Kč/m²
-    """
     if not locality:
         return []
 
@@ -116,11 +109,12 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
     ]
 
-    # Filter na rovnakú kategóriu
+    # Vyhoď junk z mediánu — rovnaké filtre ako is_relevant()
+    result = [c for c in result if _is_clean_comparable(c)]
+
     if category:
         result = [c for c in result if _category(c) == category]
 
-    # Price range filter — vylúči extrémne outliere
     if listing_per_m2 > 0:
         result = [
             c for c in result
@@ -128,6 +122,19 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         ]
 
     return result
+
+
+def _is_clean_comparable(listing: dict) -> bool:
+    """Vylúč junk zo súboru comparables — rovnaká logika ako filters.is_relevant()."""
+    from processing.filters import _EXCLUDED_KEYWORDS, _EXCLUDED_PROPERTY_TYPES
+    title = (listing.get("title") or "").lower()
+    description = (listing.get("description") or "").lower()
+    text = title + " " + description
+    if any(excl in title for excl in _EXCLUDED_PROPERTY_TYPES):
+        return False
+    if any(kw in text for kw in _EXCLUDED_KEYWORDS):
+        return False
+    return True
 
 
 def _category(listing: dict) -> str:
