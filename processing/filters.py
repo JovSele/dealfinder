@@ -12,6 +12,20 @@ _EXCLUDED_PROPERTY_TYPES = [
     "stodola", "garáž", "garážové",
 ]
 
+# Slová v title/description ktoré signalizujú junk listing
+_EXCLUDED_KEYWORDS = [
+    # Aukcie a dražby
+    "dražba", "dražby", "dražební", "aukce", "aukcia", "exekuce", "exekúcia",
+    "insolvence", "insolvenční", "nucený prodej",
+    # Podiely
+    "podíl", "podiel", "spoluvlastnický podíl", "id. 1/", "id.1/",
+    # Junk typy
+    "mobilheim", "maringotka", "tiny house", "tinyhouse",
+    "záhradná chata", "záhradná chatka",
+    # Rezervované / mŕtve
+    "rezervováno", "rezervované", "prodáno", "predané",
+]
+
 # Deal Score cap — skóre nad týmto % je outlier (dražba, ruina, chyba parsingu)
 DEAL_SCORE_MAX_PCT = config.DEAL_SCORE_MAX_PCT
 
@@ -41,13 +55,16 @@ def is_new(listing: dict) -> bool:
 
 
 def is_relevant(listing: dict) -> bool:
-    """Filtruje typy nehnuteľností ktoré nie sú investičné.
-
-    Vylúči chaty, chalupy, rekreačné objekty.
-    Bazos aj Sreality majú typ v title.
-    """
+    """Filtruje typy nehnuteľností ktoré nie sú investičné."""
     title = (listing.get("title") or "").lower()
-    return not any(excl in title for excl in _EXCLUDED_PROPERTY_TYPES)
+    description = (listing.get("description") or "").lower()
+    text = title + " " + description
+
+    if any(excl in title for excl in _EXCLUDED_PROPERTY_TYPES):
+        return False
+    if any(kw in text for kw in _EXCLUDED_KEYWORDS):
+        return False
+    return True
 
 
 def is_score_valid(score_result: dict | None) -> bool:
