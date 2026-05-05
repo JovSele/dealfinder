@@ -10,4 +10,4 @@ jobs:
     steps:
       - name: Trigger webhook
         run: |
-          curl -X POST http://95.217.234.39:9000/deploy
+          curl -X POST http://95.217.234.39:9000/deploy --max-time 30 || true
