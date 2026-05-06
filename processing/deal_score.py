@@ -18,7 +18,7 @@ from storage import db
 DISTRICT_FALLBACK_THRESHOLD = 15
 
 # Porovnávaj len comparables v tomto rozsahu od ceny inzerátu (napr. 0.4 = ±60%)
-PRICE_RANGE_RATIO = 0.4
+PRICE_RANGE_RATIO = 0.6
 
 
 def score(listing: dict) -> dict | None:
