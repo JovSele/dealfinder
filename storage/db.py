@@ -82,6 +82,14 @@ _SCHEMA_STATEMENTS = [
     CREATE INDEX IF NOT EXISTS idx_listings_locality
         ON listings(locality, source)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS free_alerts_log (
+        id          TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        sent_at     TEXT NOT NULL,
+        PRIMARY KEY (id, source)
+    )
+    """,
 ]
 
 # Migrácie — každá sa pokúsi raz, pri chybe (stĺpec už existuje) ticho preskočí
@@ -384,6 +392,24 @@ def stats() -> dict:
         "by_source":      {r["source"]: r["n"] for r in sources},
     }
 
+# ── Free alerts sent───────────────────────────────────────────
+
+def log_free_alert_sent(listing_id: str, source: str) -> None:
+    """Zaznamená skutočne odoslaný free alert."""
+    with _conn() as con:
+        _execute(
+            con,
+            "INSERT INTO free_alerts_log (id, source, sent_at) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
+            (listing_id, source, datetime.now().isoformat()),
+        )
+
+def get_free_actually_sent_today_count() -> int:
+    """Koľko free alertov sme dnes skutočne odoslali do kanála."""
+    with _conn() as con:
+        return _fetchscalar(
+            con,
+            "SELECT COUNT(*) FROM free_alerts_log WHERE sent_at::date = CURRENT_DATE",
+        ) or 0
 
 # ── Weekly Stats ──────────────────────────────────────────────
 

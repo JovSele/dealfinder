@@ -63,7 +63,7 @@ def send_pending_free_alerts() -> int:
 
     from processing import deal_score as ds
 
-    already_sent_today = db.get_free_sent_today_count()
+    already_sent_today = db.get_free_actually_sent_today_count()
     remaining = max(0, FREE_ALERTS_PER_DAY - already_sent_today)
 
     deals_only = []
@@ -91,7 +91,8 @@ def send_pending_free_alerts() -> int:
         sc = listing.pop("_score", None)
         telegram.send_free_alert(listing, sc)
         db.mark_free_sent(listing["id"], listing["source"])
-        sent += 1
+        db.log_free_alert_sent(listing["id"], listing["source"])
+        sent += 1    
 
     return sent
 

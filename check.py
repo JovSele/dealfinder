@@ -4,20 +4,17 @@ import os
 con = psycopg2.connect(os.getenv("DATABASE_URL"))
 cur = con.cursor()
 cur.execute("""
-    SELECT COUNT(*) FROM listings 
-    WHERE source = 'sreality/byty' AND new_building = TRUE
+    SELECT COUNT(*), MIN(sent_at), MAX(sent_at)
+    FROM free_sent 
+    WHERE sent_at::date = CURRENT_DATE
 """)
-print('new_building True:', cur.fetchone()[0])
+print(cur.fetchone())
 
 cur.execute("""
-    SELECT COUNT(*) FROM listings 
-    WHERE source = 'sreality/byty' AND new_building = FALSE
+    SELECT sent_at FROM free_sent 
+    WHERE sent_at::date = CURRENT_DATE
+    LIMIT 5
 """)
-print('new_building False:', cur.fetchone()[0])
-
-cur.execute("""
-    SELECT COUNT(*) FROM listings 
-    WHERE source = 'sreality/byty' AND new_building IS NULL
-""")
-print('new_building NULL:', cur.fetchone()[0])
+for r in cur.fetchall():
+    print(r)
 con.close()
