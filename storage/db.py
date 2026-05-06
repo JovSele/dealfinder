@@ -246,27 +246,48 @@ def save_listing(listing: dict) -> None:
             """
             INSERT INTO listings (
                 id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at,
-                is_auction, new_building, owner_direct, gps_lat, gps_lon, price_first_seen, enriched
+                is_auction, new_building, owner_direct, gps_lat, gps_lon, price_first_seen, enriched,
+                condition, building_type, ownership_type,
+                has_elevator, has_balcony, has_parking, has_terrace
             ) VALUES (
                 %(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
                 %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s,
                 %(is_auction)s, %(new_building)s, %(owner_direct)s,
-                %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE
+                %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE,
+                %(condition)s, %(building_type)s, %(ownership_type)s,
+                %(has_elevator)s, %(has_balcony)s, %(has_parking)s, %(has_terrace)s
             )
-            ON CONFLICT (id, source) DO NOTHING
-            RETURNING id
+            ON CONFLICT (id, source) DO UPDATE SET
+                condition      = EXCLUDED.condition,
+                building_type  = EXCLUDED.building_type,
+                ownership_type = EXCLUDED.ownership_type,
+                has_elevator   = EXCLUDED.has_elevator,
+                has_balcony    = EXCLUDED.has_balcony,
+                has_parking    = EXCLUDED.has_parking,
+                has_terrace    = EXCLUDED.has_terrace,
+                new_building   = EXCLUDED.new_building,
+                gps_lat        = EXCLUDED.gps_lat,
+                gps_lon        = EXCLUDED.gps_lon
+            RETURNING (xmax = 0) AS inserted
             """,
             {
-                "is_auction":   listing.get("is_auction", False),
-                "new_building": listing.get("new_building", False),
-                "owner_direct": listing.get("owner_direct"),
-                "gps_lat":      listing.get("gps_lat"),
-                "gps_lon":      listing.get("gps_lon"),
                 **listing,
+                "is_auction":    listing.get("is_auction", False),
+                "new_building":  listing.get("new_building", False),
+                "owner_direct":  listing.get("owner_direct"),
+                "gps_lat":       listing.get("gps_lat"),
+                "gps_lon":       listing.get("gps_lon"),
+                "condition":     listing.get("condition"),
+                "building_type": listing.get("building_type"),
+                "ownership_type":listing.get("ownership_type"),
+                "has_elevator":  listing.get("has_elevator"),
+                "has_balcony":   listing.get("has_balcony"),
+                "has_parking":   listing.get("has_parking"),
+                "has_terrace":   listing.get("has_terrace"),
             },
         )
-        # price_history — len ak bol listing skutočne nový
-        if result:
+        # price_history — len ak bol listing skutočne nový (inserted)
+        if result and result.get("inserted"):
             _execute(
                 con,
                 "INSERT INTO price_history (id, source, price, recorded_at) VALUES (%s, %s, %s, %s)",

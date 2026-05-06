@@ -31,6 +31,13 @@ class BaseScraper(ABC):
             "is_auction":   kwargs.get("is_auction", False),
             "new_building": kwargs.get("new_building", False),
             "owner_direct": kwargs.get("owner_direct"),
+            "condition":     kwargs.get("condition"),
+            "building_type": kwargs.get("building_type"),
+            "ownership_type":kwargs.get("ownership_type"),
+            "has_elevator":  kwargs.get("has_elevator"),
+            "has_balcony":   kwargs.get("has_balcony"),
+            "has_parking":   kwargs.get("has_parking"),
+            "has_terrace":   kwargs.get("has_terrace"),
         }
 
     def _log(self, msg: str) -> None:

@@ -100,6 +100,34 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
     if area:
         lines.append(f"📐 {area} m²")
 
+    # Condition + building type
+    condition_labels = {
+        "new_build":  "Novostavba",
+        "renovated":  "Po rekonštrukcii",
+        "original":   "Pôvodný stav",
+    }
+    building_labels = {
+        "panel": "panel",
+        "brick":  "tehla",
+    }
+    condition = listing.get("condition")
+    building  = listing.get("building_type")
+
+    meta_parts = []
+    if condition:
+        meta_parts.append(condition_labels.get(condition, condition))
+    if building:
+        meta_parts.append(building_labels.get(building, building))
+    if listing.get("has_elevator"):
+        meta_parts.append("výťah")
+    if listing.get("has_balcony"):
+        meta_parts.append("balkón")
+    if listing.get("has_parking"):
+        meta_parts.append("parkovanie")
+
+    if meta_parts:
+        lines.append(f"🏗 {' · '.join(meta_parts)}")
+
     # Deal Score detail
     if score:
         lines.append(

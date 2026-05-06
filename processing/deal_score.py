@@ -124,18 +124,29 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
     ]
 
-    # Vyhoď junk z mediánu
     result = [c for c in result if _is_clean_comparable(c)]
 
-    # Filter na rovnakú kategóriu
     if category:
         result = [c for c in result if _category(c) == category]
+
+    # Cohort filter — condition
+    if listing and listing.get("condition"):
+        listing_condition = listing["condition"]
+        result_condition = [c for c in result if c.get("condition") == listing_condition]
+        
+        if listing_condition == "new_build":
+            # Novostavby: strict — porovnávaj len s new_build ak máš dosť
+            if len(result_condition) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_condition
+            # inak fallback na všetky (lepšie ako None)
+        else:
+            # original/renovated: vylúč new_build, NULL nechaj
+            result = [c for c in result if c.get("condition") != "new_build"]
 
     # Cohort filter — rooms bucket
     if listing and listing.get("rooms"):
         rooms_bucket = _rooms_bucket(listing["rooms"])
         result_rooms = [c for c in result if _rooms_bucket(c.get("rooms", "")) == rooms_bucket]
-        # Ak má bucket dosť samples, použi ho — inak padni späť na všetky
         if len(result_rooms) >= config.DEAL_SCORE_MIN_SAMPLES:
             result = result_rooms
 

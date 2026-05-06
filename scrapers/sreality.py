@@ -14,6 +14,26 @@ import requests
 import config
 from scrapers.base import BaseScraper
 
+# Na začiatok triedy pridaj mapovacie konštanty:
+
+_CONDITION_MAP = {
+    "new_building":        "new_build",
+    "in_construction":     "new_build",
+    "after_reconstruction":"renovated",
+}
+# Ak nie je žiadny z týchto labelov → condition = "original"
+# (panel/brick bez stavu = starý fond, neurčený stav)
+
+_BUILDING_TYPE_MAP = {
+    "panel": "panel",
+    "brick": "brick",
+}
+
+_OWNERSHIP_MAP = {
+    "personal":   "personal",
+    "collective": "collective",
+}
+
 
 class SrealityScraper(BaseScraper):
     BASE_URL = "https://www.sreality.cz/api/cs/v2/estates"
@@ -96,34 +116,42 @@ class SrealityScraper(BaseScraper):
             hash_id = str(estate.get("hash_id", ""))
             if not hash_id:
                 return None
-    
+
             title    = estate.get("name", "").strip()
             price    = int(estate.get("price", 0))
             locality = estate.get("locality", "").strip()
             area_m2  = self._parse_area(title)
             city     = self._normalize_locality(locality)
             rooms    = self._parse_rooms(title)
-    
-            # --- NOVÉ: polia dostupné v list endpointe ---
-            gps      = estate.get("gps", {})
-            gps_lat  = gps.get("lat") if gps else None
-            gps_lon  = gps.get("lon") if gps else None
-    
-            is_auction   = bool(estate.get("is_auction", False))
-            new_building = bool(estate.get("new_building", False))
-    
-            # owner_direct: ak broker nie je professional → majiteľ priamo
-            # Toto pole je v list endpointe ako "exclusively_at_rk"
-            # False = nie exkluzívne RK = väčšia šanca owner direct
+
+            gps     = estate.get("gps", {})
+            gps_lat = gps.get("lat") if gps else None
+            gps_lon = gps.get("lon") if gps else None
+
+            is_auction = bool(estate.get("is_auction", False))
+
             exclusively_rk = bool(estate.get("exclusively_at_rk", True))
-            owner_direct   = not exclusively_rk  # aproximácia, detail endpoint upresní
-    
+            owner_direct   = not exclusively_rk
+
+            # --- labelsAll parsing ---
+            labels_all = estate.get("labelsAll", [])
+            prop_labels = set(labels_all[0]) if labels_all and labels_all[0] else set()
+
+            new_building  = "new_building" in prop_labels or "in_construction" in prop_labels
+            condition     = self._parse_condition(prop_labels)
+            building_type = self._parse_building_type(prop_labels)
+            ownership     = self._parse_ownership(prop_labels)
+            has_elevator  = "elevator" in prop_labels
+            has_balcony   = "balcony" in prop_labels or "loggia" in prop_labels
+            has_parking   = "parking_lots" in prop_labels or "garage" in prop_labels
+            has_terrace   = "terrace" in prop_labels
+
             url = (
                 f"https://www.sreality.cz/detail/"
                 f"{self._type_slug()}/{self._category_slug()}/"
                 f"-/-/{hash_id}"
             )
-    
+
             return self._make_listing(
                 id=f"sreality_{hash_id}",
                 title=title,
@@ -138,10 +166,41 @@ class SrealityScraper(BaseScraper):
                 is_auction=is_auction,
                 new_building=new_building,
                 owner_direct=owner_direct,
+                condition=condition,
+                building_type=building_type,
+                ownership_type=ownership,
+                has_elevator=has_elevator,
+                has_balcony=has_balcony,
+                has_parking=has_parking,
+                has_terrace=has_terrace,
             )
         except Exception as e:
             self._log(f"Parse chyba: {e}")
             return None
+
+    @staticmethod
+    def _parse_condition(labels: set) -> str:
+        if "new_building" in labels or "in_construction" in labels:
+            return "new_build"
+        if "after_reconstruction" in labels:
+            return "renovated"
+        return "original"
+
+    @staticmethod
+    def _parse_building_type(labels: set) -> str | None:
+        if "panel" in labels:
+            return "panel"
+        if "brick" in labels:
+            return "brick"
+        return None
+
+    @staticmethod
+    def _parse_ownership(labels: set) -> str | None:
+        if "personal" in labels:
+            return "personal"
+        if "collective" in labels:
+            return "collective"
+        return None
 
     # ── Parsovanie ────────────────────────────────────────────
 
