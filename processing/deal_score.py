@@ -65,7 +65,7 @@ def score(listing: dict) -> dict | None:
     return {
         "pct_below":    round(pct_below, 1),
         "price_per_m2": round(listing_per_m2),
-        "avg_per_m2":   round(median_per_m2),
+        "median_per_m2":   round(median_per_m2),
         "label":        _label(pct_below),
         "sample_size":  len(comparables),
         "scope":        scope,
