@@ -235,64 +235,6 @@ def _cleanup_legacy_sources():
     except Exception:
         pass  # tabuľky ešte neexistujú — ignoruj
 
-# ── Listings ──────────────────────────────────────────────────
-
-# OPRAV TOTO — použi RETURNING aby si vedel či bol INSERT skutočný:
-def save_listing(listing: dict) -> None:
-    now = datetime.now().isoformat()
-    with _conn() as con:
-        result = _fetchone(
-            con,
-            """
-            INSERT INTO listings (
-                id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at,
-                is_auction, new_building, owner_direct, gps_lat, gps_lon, price_first_seen, enriched,
-                condition, building_type, ownership_type,
-                has_elevator, has_balcony, has_parking, has_terrace
-            ) VALUES (
-                %(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
-                %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s,
-                %(is_auction)s, %(new_building)s, %(owner_direct)s,
-                %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE,
-                %(condition)s, %(building_type)s, %(ownership_type)s,
-                %(has_elevator)s, %(has_balcony)s, %(has_parking)s, %(has_terrace)s
-            )
-            ON CONFLICT (id, source) DO UPDATE SET
-                condition      = EXCLUDED.condition,
-                building_type  = EXCLUDED.building_type,
-                ownership_type = EXCLUDED.ownership_type,
-                has_elevator   = EXCLUDED.has_elevator,
-                has_balcony    = EXCLUDED.has_balcony,
-                has_parking    = EXCLUDED.has_parking,
-                has_terrace    = EXCLUDED.has_terrace,
-                new_building   = EXCLUDED.new_building,
-                gps_lat        = EXCLUDED.gps_lat,
-                gps_lon        = EXCLUDED.gps_lon
-            RETURNING (xmax = 0) AS inserted
-            """,
-            {
-                **listing,
-                "is_auction":    listing.get("is_auction", False),
-                "new_building":  listing.get("new_building", False),
-                "owner_direct":  listing.get("owner_direct"),
-                "gps_lat":       listing.get("gps_lat"),
-                "gps_lon":       listing.get("gps_lon"),
-                "condition":     listing.get("condition"),
-                "building_type": listing.get("building_type"),
-                "ownership_type":listing.get("ownership_type"),
-                "has_elevator":  listing.get("has_elevator"),
-                "has_balcony":   listing.get("has_balcony"),
-                "has_parking":   listing.get("has_parking"),
-                "has_terrace":   listing.get("has_terrace"),
-            },
-        )
-        # price_history — len ak bol listing skutočne nový (inserted)
-        if result and result.get("inserted"):
-            _execute(
-                con,
-                "INSERT INTO price_history (id, source, price, recorded_at) VALUES (%s, %s, %s, %s)",
-                (listing["id"], listing["source"], listing["price"], now),
-            )
 
 
 def get_listings_by_locality(locality: str, source: str | None = None) -> list[dict]:
@@ -431,6 +373,106 @@ def get_free_actually_sent_today_count() -> int:
             con,
             "SELECT COUNT(*) FROM free_alerts_log WHERE sent_at::date = CURRENT_DATE",
         ) or 0
+
+
+
+# ── Listings ──────────────────────────────────────────────────
+
+def save_listing(listing: dict) -> None:
+    now = datetime.now().isoformat()
+    with _conn() as con:
+        result = _fetchone(
+            con,
+            """
+            INSERT INTO listings (
+                id, source, title, price, area_m2, locality, district, rooms, hash, url, scraped_at,
+                is_auction, new_building, owner_direct, gps_lat, gps_lon, price_first_seen, enriched,
+                condition, building_type, ownership_type,
+                has_elevator, has_balcony, has_parking, has_terrace
+            ) VALUES (
+                %(id)s, %(source)s, %(title)s, %(price)s, %(area_m2)s, %(locality)s,
+                %(district)s, %(rooms)s, %(hash)s, %(url)s, %(scraped_at)s,
+                %(is_auction)s, %(new_building)s, %(owner_direct)s,
+                %(gps_lat)s, %(gps_lon)s, %(price)s, FALSE,
+                %(condition)s, %(building_type)s, %(ownership_type)s,
+                %(has_elevator)s, %(has_balcony)s, %(has_parking)s, %(has_terrace)s
+            )
+            ON CONFLICT (id, source) DO UPDATE SET
+                condition      = EXCLUDED.condition,
+                building_type  = EXCLUDED.building_type,
+                ownership_type = EXCLUDED.ownership_type,
+                has_elevator   = EXCLUDED.has_elevator,
+                has_balcony    = EXCLUDED.has_balcony,
+                has_parking    = EXCLUDED.has_parking,
+                has_terrace    = EXCLUDED.has_terrace,
+                new_building   = EXCLUDED.new_building,
+                gps_lat        = EXCLUDED.gps_lat,
+                gps_lon        = EXCLUDED.gps_lon,
+                price          = EXCLUDED.price
+            RETURNING (xmax = 0) AS inserted, price
+            """,
+            {
+                "is_auction":    listing.get("is_auction", False),
+                "new_building":  listing.get("new_building", False),
+                "owner_direct":  listing.get("owner_direct"),
+                "gps_lat":       listing.get("gps_lat"),
+                "gps_lon":       listing.get("gps_lon"),
+                "condition":     listing.get("condition"),
+                "building_type": listing.get("building_type"),
+                "ownership_type":listing.get("ownership_type"),
+                "has_elevator":  listing.get("has_elevator"),
+                "has_balcony":   listing.get("has_balcony"),
+                "has_parking":   listing.get("has_parking"),
+                "has_terrace":   listing.get("has_terrace"),
+                **listing,
+            },
+        )
+
+        if result:
+            if result.get("inserted"):
+                # Nový listing — zaznamenaj počiatočnú cenu
+                _execute(
+                    con,
+                    "INSERT INTO price_history (id, source, price, recorded_at) VALUES (%s, %s, %s, %s)",
+                    (listing["id"], listing["source"], listing["price"], now),
+                )
+            else:
+                # Existujúci listing — skontroluj zmenu ceny
+                last = _fetchone(
+                    con,
+                    """
+                    SELECT price FROM price_history
+                    WHERE id = %s AND source = %s
+                    ORDER BY recorded_at DESC
+                    LIMIT 1
+                    """,
+                    (listing["id"], listing["source"]),
+                )
+                if last and last["price"] != listing["price"]:
+                    _execute(
+                        con,
+                        "INSERT INTO price_history (id, source, price, recorded_at) VALUES (%s, %s, %s, %s)",
+                        (listing["id"], listing["source"], listing["price"], now),
+                    )
+
+
+# ── Citanie Historie ──────────────────────────────────────────────
+
+def get_price_history(listing_id: str, source: str) -> list[dict]:
+    """Vráti históriu cien pre listing zoradenú od najstaršej."""
+    with _conn() as con:
+        return _fetchall(
+            con,
+            """
+            SELECT price, recorded_at
+            FROM price_history
+            WHERE id = %s AND source = %s
+            ORDER BY recorded_at ASC
+            """,
+            (listing_id, source),
+        )
+
+
 
 # ── Weekly Stats ──────────────────────────────────────────────
 
