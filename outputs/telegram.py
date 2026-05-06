@@ -129,20 +129,24 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
         lines.append(f"🏗 {' · '.join(meta_parts)}")
 
     # Deal Score detail
-        if score:
-            sample = score.get("sample_size", 0)
-            if sample >= 50:
-                confidence = "🟢"
-            elif sample >= 20:
-                confidence = "🟡"
-            else:
-                confidence = "🔴"
+    if score:
+        sample  = score.get("sample_size", 0)
+        quality = score.get("cohort_quality", 0.0)
 
-            lines.append(
-                f"📊 {_fmt_price(score['price_per_m2'], currency)}/m²"
-                f" vs medián {_fmt_price(score['median_per_m2'], currency)}/m²"
-            )
-            lines.append(f"{confidence} {sample} porovnaní")
+        if sample >= 50 and quality >= 0.55:
+            confidence = "🟢"
+        elif sample >= 15 and quality >= 0.35:
+            confidence = "🟡"
+        elif sample >= 5:
+            confidence = "🔴 málo dát"
+        else:
+            confidence = "🔴 nedostatok dát"
+
+        lines.append(
+            f"📊 {_fmt_price(score['price_per_m2'], currency)}/m²"
+            f" vs medián {_fmt_price(score['median_per_m2'], currency)}/m²"
+        )
+        lines.append(f"{confidence} {sample} porovnaní")
 
     # Lokalita
     loc = listing.get("locality", "")

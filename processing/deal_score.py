@@ -22,20 +22,6 @@ PRICE_RANGE_RATIO = 0.6
 
 
 def score(listing: dict) -> dict | None:
-    """Vypočítaj Deal Score pre inzerát.
-
-    Vracia:
-        dict so score ak je vypočítateľný, inak None.
-
-        {
-            "pct_below":    float,  # napr. 15.3 (znamená −15.3% pod trhom)
-            "price_per_m2": int,    # cena inzerátu za m²
-            "avg_per_m2":   int,    # medián lokality za m² (názov zachovaný pre kompatibilitu)
-            "label":        str,    # napr. "−15% pod trhom"
-            "sample_size":  int,    # počet inzerátov v mediáne
-            "scope":        str,    # "locality" | "district" — čo bolo použité
-        }
-    """
     price    = listing.get("price", 0)
     area     = listing.get("area_m2", 0)
     locality = listing.get("locality", "")
@@ -47,7 +33,7 @@ def score(listing: dict) -> dict | None:
     listing_per_m2 = price / area
     category = _category(listing)
 
-    comparables, scope = _get_comparables(
+    comparables, scope, cohort_quality = _get_comparables(
         locality, listing.get("district", ""), source, category, listing_per_m2, listing
     )
 
@@ -63,12 +49,13 @@ def score(listing: dict) -> dict | None:
     pct_below = (median_per_m2 - listing_per_m2) / median_per_m2 * 100
 
     return {
-        "pct_below":    round(pct_below, 1),
-        "price_per_m2": round(listing_per_m2),
-        "median_per_m2":   round(median_per_m2),
-        "label":        _label(pct_below),
-        "sample_size":  len(comparables),
-        "scope":        scope,
+        "pct_below":      round(pct_below, 1),
+        "price_per_m2":   round(listing_per_m2),
+        "median_per_m2":  round(median_per_m2),
+        "label":          _label(pct_below),
+        "sample_size":    len(comparables),
+        "scope":          scope,
+        "cohort_quality": round(cohort_quality, 2),
     }
 
 
@@ -80,22 +67,23 @@ def is_deal(score_result: dict | None) -> bool:
 
 
 def _get_comparables(locality, district, source, category="", listing_per_m2=0, listing=None):
-    comps = _fetch_valid(locality, source, category, listing_per_m2, listing)
+    comps, quality = _fetch_valid(locality, source, category, listing_per_m2, listing)
     if len(comps) >= config.DEAL_SCORE_MIN_SAMPLES:
         if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
-            return comps, "locality"
+            return comps, "locality", quality
         if district and district != locality:
-            district_comps = _fetch_valid(district, source, category, listing_per_m2, listing)
+            district_comps, district_quality = _fetch_valid(district, source, category, listing_per_m2, listing)
             if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
-                return district_comps, "district"
-        return comps, "locality"
+                return district_comps, "district", district_quality
+        return comps, "locality", quality
 
     if district and district != locality:
-        district_comps = _fetch_valid(district, source, category, listing_per_m2, listing)
+        district_comps, district_quality = _fetch_valid(district, source, category, listing_per_m2, listing)
         if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
-            return district_comps, "district"
+            return district_comps, "district", district_quality
 
-    return None, ""
+    return None, "", 0.0
+
 
 def _rooms_bucket(rooms: str) -> str:
     """Zoskup dispozície do bucketov pre porovnanie."""
@@ -113,9 +101,9 @@ def _rooms_bucket(rooms: str) -> str:
     return ""
 
 
-def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0, listing: dict = None) -> list:
+def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0, listing: dict = None) -> tuple[list, float]:
     if not locality:
-        return []
+        return [], 0.0
 
     comparables = db.get_listings_by_locality(locality, source)
 
@@ -123,35 +111,47 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         c for c in comparables
         if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
     ]
-
     result = [c for c in result if _is_clean_comparable(c)]
 
     if category:
         result = [c for c in result if _category(c) == category]
 
-    # Cohort filter — condition
+    # Sleduj čo prešlo na exact match — základ quality score
+    quality_points = 0.0
+    quality_max    = 0.0
+
+    # Condition filter
     if listing and listing.get("condition"):
+        quality_max += 0.35
         listing_condition = listing["condition"]
         result_condition = [c for c in result if c.get("condition") == listing_condition]
-        
+
         if listing_condition == "new_build":
-            # Novostavby: strict — porovnávaj len s new_build ak máš dosť
             if len(result_condition) >= config.DEAL_SCORE_MIN_SAMPLES:
                 result = result_condition
-            # inak fallback na všetky (lepšie ako None)
+                quality_points += 0.35  # exact match
         else:
-            # original/renovated: vylúč new_build, NULL nechaj
-            result = [c for c in result if c.get("condition") != "new_build"]
+            result_no_new = [c for c in result if c.get("condition") != "new_build"]
+            result_exact  = [c for c in result_no_new if c.get("condition") == listing_condition]
+            if len(result_exact) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_exact
+                quality_points += 0.35  # exact match
+            elif len(result_no_new) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_no_new
+                quality_points += 0.15  # partial — aspoň nie new_build
 
-    # Cohort filter — rooms bucket
+    # Rooms filter
     if listing and listing.get("rooms"):
+        quality_max += 0.25
         rooms_bucket = _rooms_bucket(listing["rooms"])
         result_rooms = [c for c in result if _rooms_bucket(c.get("rooms", "")) == rooms_bucket]
         if len(result_rooms) >= config.DEAL_SCORE_MIN_SAMPLES:
             result = result_rooms
+            quality_points += 0.25
 
-    # Cohort filter — area bucket
+    # Area filter
     if listing and listing.get("area_m2", 0) > 0:
+        quality_max += 0.20
         area = listing["area_m2"]
         result_area = [
             c for c in result
@@ -159,15 +159,26 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         ]
         if len(result_area) >= config.DEAL_SCORE_MIN_SAMPLES:
             result = result_area
+            quality_points += 0.20
 
-    # Price range filter
+    # Building type filter
+    if listing and listing.get("building_type"):
+        quality_max += 0.20
+        bt = listing["building_type"]
+        result_bt = [c for c in result if c.get("building_type") == bt]
+        if len(result_bt) >= config.DEAL_SCORE_MIN_SAMPLES:
+            result = result_bt
+            quality_points += 0.20
+
+    # Price range filter (vždy)
     if listing_per_m2 > 0:
         result = [
             c for c in result
             if PRICE_RANGE_RATIO <= (c["price"] / c["area_m2"]) / listing_per_m2 <= (1 / PRICE_RANGE_RATIO)
         ]
 
-    return result
+    quality = quality_points / quality_max if quality_max > 0 else 0.0
+    return result, quality
 
 
 def _is_clean_comparable(listing: dict) -> bool:
