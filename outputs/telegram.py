@@ -100,33 +100,7 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
     if area:
         lines.append(f"📐 {area} m²")
 
-    # Condition + building type
-    condition_labels = {
-        "new_build":  "Novostavba",
-        "renovated":  "Po rekonštrukcii",
-        "original":   "Pôvodný stav",
-    }
-    building_labels = {
-        "panel": "panel",
-        "brick":  "tehla",
-    }
-    condition = listing.get("condition")
-    building  = listing.get("building_type")
 
-    meta_parts = []
-    if condition:
-        meta_parts.append(condition_labels.get(condition, condition))
-    if building:
-        meta_parts.append(building_labels.get(building, building))
-    if listing.get("has_elevator"):
-        meta_parts.append("výťah")
-    if listing.get("has_balcony"):
-        meta_parts.append("balkón")
-    if listing.get("has_parking"):
-        meta_parts.append("parkovanie")
-
-    if meta_parts:
-        lines.append(f"🏗 {' · '.join(meta_parts)}")
 
     # Deal Score detail
     if score:
@@ -148,6 +122,12 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
         )
         lines.append(f"{confidence} {sample} porovnaní")
 
+    # Why sekcia
+    why = _format_why(listing)
+    if why:
+        lines.append("")
+        lines.append(why)
+
     # Lokalita
     loc = listing.get("locality", "")
     if loc:
@@ -161,6 +141,55 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
         lines.append("")
         lines.append("_Chceš alerty okamžite? → dealfinder.sk_")
 
+    return "\n".join(lines)
+
+def _format_why(listing: dict) -> str | None:
+    """Vygeneruj 'prečo lacný / prečo pozor' sekciu."""
+    lines = []
+
+    condition = listing.get("condition")
+    building  = listing.get("building_type")
+
+    condition_labels = {
+        "new_build": "Novostavba",
+        "renovated": "Po rekonštrukcii",
+        "original":  "Pôvodný stav",
+    }
+    building_labels = {
+        "panel": "panel",
+        "brick":  "tehla",
+    }
+
+    # ✅ Pozitíva
+    if condition in ("renovated", "new_build"):
+        lines.append(f"✅ {condition_labels[condition]}")
+    if building == "brick":
+        lines.append("✅ Tehla")
+    if listing.get("has_elevator"):
+        lines.append("✅ Výťah")
+    if listing.get("has_balcony"):
+        lines.append("✅ Balkón / lodžia")
+    if listing.get("has_parking"):
+        lines.append("✅ Parkovanie")
+    if listing.get("owner_direct"):
+        lines.append("✅ Priamy predaj (bez RK)")
+    if listing.get("ownership_type") == "personal":
+        lines.append("✅ Osobné vlastníctvo")
+
+    # ⚠️ Negatíva
+    if condition == "original":
+        lines.append("⚠️ Pôvodný stav")
+    if building == "panel":
+        lines.append("⚠️ Panelák")
+    if listing.get("has_elevator") is False and listing.get("condition") != "new_build":
+        lines.append("⚠️ Bez výťahu")
+    if not listing.get("has_parking"):
+        lines.append("⚠️ Bez parkovania")
+    if listing.get("ownership_type") == "collective":
+        lines.append("⚠️ Družstevný byt")
+
+    if not lines:
+        return None
     return "\n".join(lines)
 
 
