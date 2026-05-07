@@ -49,15 +49,17 @@ class SrealityScraper(BaseScraper):
     def __init__(
         self,
         source: str,
-        category_main_cb: int,   # 1 = byty, 2 = domy
-        category_type_cb: int,   # 1 = predaj, 2 = prenájom
-        region_id: int,
+        category_main_cb: int,
+        category_type_cb: int,
+        region_id: int = None,
+        district_id: int = None,
         pages: int = 200,
     ):
         self.source = source
         self._category_main = category_main_cb
         self._category_type = category_type_cb
         self._region_id = region_id
+        self._district_id = district_id
         self._pages = pages
         self._session = requests.Session()
         self._session.headers.update(self.HEADERS)
@@ -97,10 +99,13 @@ class SrealityScraper(BaseScraper):
         params = {
             "category_main_cb": self._category_main,
             "category_type_cb": self._category_type,
-            "locality_region_id": self._region_id,
             "per_page": 20,
             "page": page,
         }
+        if self._region_id:
+            params["locality_region_id"] = self._region_id
+        if self._district_id:
+            params["locality_district_id"] = self._district_id
         try:
             r = self._session.get(self.BASE_URL, params=params, timeout=15)
             r.raise_for_status()

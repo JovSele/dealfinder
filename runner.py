@@ -10,14 +10,17 @@ from outputs import telegram
 from scrapers.sreality import SrealityScraper
 
 SCRAPERS = [
-   
-    # --- Czech market ---
+    # --- Středočeský kraj ---
     SrealityScraper(source="sreality/byty", category_main_cb=1, category_type_cb=1, region_id=11),
     SrealityScraper(source="sreality/domy", category_main_cb=2, category_type_cb=1, region_id=11),
 
     # --- Praha ---
     SrealityScraper(source="sreality/byty/praha", category_main_cb=1, category_type_cb=1, region_id=10),
     SrealityScraper(source="sreality/domy/praha", category_main_cb=2, category_type_cb=1, region_id=10),
+
+    # --- Brno ---
+    SrealityScraper(source="sreality/byty/brno", category_main_cb=1, category_type_cb=1, district_id=72),
+    SrealityScraper(source="sreality/domy/brno", category_main_cb=2, category_type_cb=1, district_id=72),
 ]
 
 
