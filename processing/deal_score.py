@@ -66,22 +66,102 @@ def is_deal(score_result: dict | None) -> bool:
     return score_result["pct_below"] >= config.DEAL_SCORE_THRESHOLD_PCT
 
 
+from processing.neighbourhood import extract_district_number
+from storage.db import get_listings_by_neighbourhood
+
+def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0, listing: dict = None) -> tuple[list, float]:
+    if not locality:
+        return [], 0.0
+
+    comparables = db.get_listings_by_locality(locality, source)
+
+    result = [c for c in comparables if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0]
+    result = [c for c in result if _is_clean_comparable(c)]
+
+    if category:
+        result = [c for c in result if _category(c) == category]
+
+    quality_points = 0.0
+    quality_max    = 0.0
+
+    if listing and listing.get("condition"):
+        quality_max += 0.35
+        listing_condition = listing["condition"]
+        result_condition = [c for c in result if c.get("condition") == listing_condition]
+        if listing_condition == "new_build":
+            if len(result_condition) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_condition
+                quality_points += 0.35
+        else:
+            result_no_new = [c for c in result if c.get("condition") != "new_build"]
+            result_exact  = [c for c in result_no_new if c.get("condition") == listing_condition]
+            if len(result_exact) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_exact
+                quality_points += 0.35
+            elif len(result_no_new) >= config.DEAL_SCORE_MIN_SAMPLES:
+                result = result_no_new
+                quality_points += 0.15
+
+    if listing and listing.get("rooms"):
+        quality_max += 0.25
+        rooms_bucket = _rooms_bucket(listing["rooms"])
+        result_rooms = [c for c in result if _rooms_bucket(c.get("rooms", "")) == rooms_bucket]
+        if len(result_rooms) >= config.DEAL_SCORE_MIN_SAMPLES:
+            result = result_rooms
+            quality_points += 0.25
+
+    if listing and listing.get("area_m2", 0) > 0:
+        quality_max += 0.20
+        area = listing["area_m2"]
+        result_area = [
+            c for c in result
+            if abs(c.get("area_m2", 0) - area) <= max(20, area * 0.4)
+        ]
+        if len(result_area) >= config.DEAL_SCORE_MIN_SAMPLES:
+            result = result_area
+            quality_points += 0.20
+
+    if listing and listing.get("building_type"):
+        quality_max += 0.20
+        bt = listing["building_type"]
+        result_bt = [c for c in result if c.get("building_type") == bt]
+        if len(result_bt) >= config.DEAL_SCORE_MIN_SAMPLES:
+            result = result_bt
+            quality_points += 0.20
+
+    if listing_per_m2 > 0:
+        result = [
+            c for c in result
+            if PRICE_RANGE_RATIO <= (c["price"] / c["area_m2"]) / listing_per_m2 <= (1 / PRICE_RANGE_RATIO)
+        ]
+
+    quality = quality_points / quality_max if quality_max > 0 else 0.0
+    return result, quality
+
 def _get_comparables(locality, district, source, category="", listing_per_m2=0, listing=None):
+    from processing.neighbourhood import extract, extract_district_number
+
+    neighbourhood = extract(district)
+    district_num  = extract_district_number(neighbourhood)
+
+    # Level 1: neighbourhood (Praha 5 - Smíchov, Brno - Veveří)
+    if neighbourhood:
+        comps, quality = _fetch_valid_nb(neighbourhood, source, category, listing_per_m2, listing)
+        if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
+            return comps, "neighbourhood", quality
+
+    # Level 2: district number (Praha 5, Praha, Brno)
+    if district_num and district_num != locality:
+        comps, quality = _fetch_valid(district_num, source, category, listing_per_m2, listing)
+        if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
+            return comps, "district_num", quality
+
+    # Level 3: locality (Praha, Brno, Český Brod)
     comps, quality = _fetch_valid(locality, source, category, listing_per_m2, listing)
     if len(comps) >= config.DEAL_SCORE_MIN_SAMPLES:
-        if len(comps) >= DISTRICT_FALLBACK_THRESHOLD:
-            return comps, "locality", quality
-        if district and district != locality:
-            district_comps, district_quality = _fetch_valid(district, source, category, listing_per_m2, listing)
-            if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
-                return district_comps, "district", district_quality
         return comps, "locality", quality
 
-    if district and district != locality:
-        district_comps, district_quality = _fetch_valid(district, source, category, listing_per_m2, listing)
-        if len(district_comps) >= config.DEAL_SCORE_MIN_SAMPLES:
-            return district_comps, "district", district_quality
-
+    # Level 4: NO SCORE
     return None, "", 0.0
 
 
@@ -101,18 +181,13 @@ def _rooms_bucket(rooms: str) -> str:
     return ""
 
 
-def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2: float = 0, listing: dict = None) -> tuple[list, float]:
-    if not locality:
-        return [], 0.0
-
-    comparables = db.get_listings_by_locality(locality, source)
-
-    result = [
-        c for c in comparables
-        if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0
-    ]
+def _fetch_valid_nb(neighbourhood: str, source: str, category: str = "", listing_per_m2: float = 0, listing: dict = None) -> tuple[list, float]:
+    """Rovnaká logika ako _fetch_valid ale query cez neighbourhood stĺpec."""
+    from storage.db import get_listings_by_neighbourhood
+    comparables = get_listings_by_neighbourhood(neighbourhood, source)
+    # Ďalej rovnaká filter logika ako v _fetch_valid
+    result = [c for c in comparables if c.get("area_m2", 0) > 0 and c.get("price", 0) > 0]
     result = [c for c in result if _is_clean_comparable(c)]
-
     if category:
         result = [c for c in result if _category(c) == category]
 
@@ -178,7 +253,7 @@ def _fetch_valid(locality: str, source: str, category: str = "", listing_per_m2:
         ]
 
     quality = quality_points / quality_max if quality_max > 0 else 0.0
-    return result, quality
+    return result, 0.8  # quality default pre neighbourhood level
 
 
 def _is_clean_comparable(listing: dict) -> bool:
@@ -215,9 +290,9 @@ def _category(listing: dict) -> str:
 
 def _label(pct_below: float) -> str:
     if pct_below >= 20:
-        return f"−{pct_below:.0f}% pod trhom  🔥"
+        return f"−{pct_below:.0f}% 🔥"
     if pct_below >= 10:
-        return f"−{pct_below:.0f}% pod trhom"
+        return f"−{pct_below:.0f}%"
     if pct_below >= 0:
-        return f"−{pct_below:.0f}% pod trhom"
-    return f"+{abs(pct_below):.0f}% nad trhom"
+        return f"−{pct_below:.0f}%"
+    return f"+{abs(pct_below):.0f}%"

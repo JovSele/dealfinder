@@ -81,7 +81,7 @@ def _format_message(listing: dict, score: dict | None, free_delay: bool = False)
         lines.append("")
 
     if score and score["pct_below"] >= 10:
-        lines.append(f"🔥 *DEAL: {score['label']}*")
+        lines.append(f"⚡ *Příležitost {score['label']} pod mediánem*")
     else:
         lines.append("🏠 *Nový inzerát*")
 

@@ -110,8 +110,9 @@ class SrealityScraper(BaseScraper):
             r = self._session.get(self.BASE_URL, params=params, timeout=15)
             r.raise_for_status()
             estates = r.json().get("_embedded", {}).get("estates", [])
+
             parsed = [self._parse(e) for e in estates]
-            return [l for l in parsed if l]   # ← filter None po parsovaní
+            return [l for l in parsed if l]
         except Exception as e:
             self._log(f"Chyba na strane {page}: {e}")
             return []
@@ -151,10 +152,15 @@ class SrealityScraper(BaseScraper):
             has_parking   = "parking_lots" in prop_labels or "garage" in prop_labels
             has_terrace   = "terrace" in prop_labels
 
+            seo = estate.get("seo", {})
+            seo_locality = seo.get("locality", "-").strip("-")
+            seo_sub = seo.get("category_sub_cb", "")
+            layout_slug = self._layout_slug(seo_sub)
+
             url = (
                 f"https://www.sreality.cz/detail/"
                 f"{self._type_slug()}/{self._category_slug()}/"
-                f"-/-/{hash_id}"
+                 f"{layout_slug}/{seo_locality}/{hash_id}"
             )
 
             return self._make_listing(
@@ -206,6 +212,31 @@ class SrealityScraper(BaseScraper):
         if "collective" in labels:
             return "collective"
         return None
+    
+    @staticmethod
+    def _layout_slug(category_sub_cb: int) -> str:
+        _map = {
+            2:  "1+kk",
+            3:  "1+1",
+            4:  "2+kk",
+            5:  "2+1",
+            6:  "3+kk",
+            7:  "3+1",
+            8:  "4+kk",
+            9:  "4+1",
+            10: "2+kk", 
+            16: "5+kk",
+            18: "6-a-viac",
+            19: "atypicky",
+            47: "1+kk",
+            # Domy
+            37: "rodinny",
+            39: "vila",
+            40: "rodinny",
+            43: "chalupa",
+            44: "chata",
+        }
+        return _map.get(category_sub_cb, "-")
 
     # ── Parsovanie ────────────────────────────────────────────
 
@@ -267,4 +298,4 @@ class SrealityScraper(BaseScraper):
         return "prodej" if self._category_type == 1 else "pronajem"
 
     def _category_slug(self) -> str:
-        return "byty" if self._category_main == 1 else "domy"
+         return "byt" if self._category_main == 1 else "dum"
